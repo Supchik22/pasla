@@ -109,6 +109,7 @@ fun main() {
     )
 
 
+
     while (!glfwWindowShouldClose(window)) {
         val currentFrameTime = System.nanoTime()
         val deltaTime = (currentFrameTime - lastFrameTime) / 1_000_000_000.0f
