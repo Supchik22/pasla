@@ -33,6 +33,9 @@ object BlockRegistry {
     val STONE = register(Color.decode("#999999"))
     val GRASS_PLANT = register(Color(80, 200, 60), solid = false)
 
+    val MAPLE_LOG = register(Color(80, 200, 60), solid = true)
+    val MAPLE_LEAVES = register(Color(80, 200, 60), solid = true)
+
 
 
 

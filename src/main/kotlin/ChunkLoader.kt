@@ -85,10 +85,10 @@ object ChunkLoader {
 
     private fun calculateLodForDistance(distance: Double): Int {
         return when {
-            distance < 5 -> 1   // Найвища деталізація
+            distance < 5 -> 1
             distance < 10 -> 2
             distance < 20 -> 4
-            else -> 8           // Найнижча деталізація
+            else -> 8
         }
     }
 

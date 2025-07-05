@@ -45,7 +45,10 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
             "/textures/grass_top.png",
             "/textures/stone.png",
             "/textures/grass_side.png",
-            "/textures/grass.png"
+            "/textures/grass.png",
+            "/textures/maple_log_top.png",
+            "/textures/maple_log_side.png",
+            "/textures/maple_leaves.png",
         )
         textureAtlas = TextureAtlas(texturePaths, textureSize = 16)
 

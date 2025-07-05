@@ -29,7 +29,7 @@ fun getTextureIdForBlockFace(blockId: Short, face: Face): Short {
             Face.BOTTOM -> MAPLE_LOG
             else -> MAPLE_LOG_SIDE
         }
-
+        6.toShort() -> MAPLE_LEAVES
         else -> TEXTURE_DIRT_ID
     }
 
