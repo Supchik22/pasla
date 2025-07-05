@@ -1,15 +1,13 @@
 #version 330 core
-layout (location = 0) in vec3 aPos;
+layout(location = 0) in vec3 aPos;
+
+out vec3 TexCoords;
 
 uniform mat4 projection;
 uniform mat4 view;
 
-out vec3 WorldPos;
-
-void main()
-{
-    // Видаляємо компоненти переміщення з View Matrix
-    mat4 rotView = mat4(mat3(view));
-    gl_Position = projection * rotView * vec4(aPos, 1.0);
-    WorldPos = aPos; // Передаємо позицію для обчислення кольору
+void main() {
+    TexCoords = aPos;
+    vec4 pos = projection * view * vec4(aPos, 1.0);
+    gl_Position = pos.xyww;  // Задаємо gl_Position.z = gl_Position.w, щоб скайбокс був позаду
 }

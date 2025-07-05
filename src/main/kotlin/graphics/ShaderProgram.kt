@@ -5,14 +5,17 @@ import org.lwjgl.system.MemoryStack
 import java.nio.FloatBuffer
 
 
-// Допоміжна функція для завантаження тексту з файлу
+
 private fun loadResource(fileName: String): String {
-    // ДОДАЙТЕ СЛЕШ НА ПОЧАТКУ ШЛЯХУ!
-    return object {}.javaClass.getResource("/$fileName")?.readText() // <<< ЗМІНА ТУТ
+
+    return object {}.javaClass.getResource("/$fileName")?.readText()
         ?: throw RuntimeException("Resource '$fileName' not found")
 }
-
-class ShaderProgram(vertexShaderPath: String, fragmentShaderPath: String) {
+class ShaderProgram(
+    vertexShaderPath: String,
+    fragmentShaderPath: String,
+    uniformsToCreate: List<String> = listOf("projection", "view", "model", "ourTexture")
+) {
     private val programId: Int = glCreateProgram()
     private var vertexShaderId: Int = 0
     private var fragmentShaderId: Int = 0
@@ -21,31 +24,26 @@ class ShaderProgram(vertexShaderPath: String, fragmentShaderPath: String) {
     init {
         if (programId == 0) throw RuntimeException("Could not create ShaderProgram")
 
-        // 1. Завантаження та компіляція вершинного шейдера
         vertexShaderId = createShader(loadResource(vertexShaderPath), GL_VERTEX_SHADER)
         glAttachShader(programId, vertexShaderId)
 
-        // 2. Завантаження та компіляція фрагментного шейдера
         fragmentShaderId = createShader(loadResource(fragmentShaderPath), GL_FRAGMENT_SHADER)
         glAttachShader(programId, fragmentShaderId)
 
-        // 3. Лінкування програми
         glLinkProgram(programId)
         if (glGetProgrami(programId, GL_LINK_STATUS) == 0) {
             throw RuntimeException("Error linking ShaderProgram: ${glGetProgramInfoLog(programId, 1024)}")
         }
 
-        // 4. Валідація програми (корисно для налагодження)
         glValidateProgram(programId)
         if (glGetProgrami(programId, GL_VALIDATE_STATUS) == 0) {
             System.err.println("Warning validating ShaderProgram: ${glGetProgramInfoLog(programId, 1024)}")
         }
 
-        // 5. Отримання locations для uniform-змінних
-        createUniform("projection")
-        createUniform("view")
-        createUniform("model")
-        createUniform("ourTexture") // Для текстур
+        // Створення uniform-ів за списком
+        for (uniformName in uniformsToCreate) {
+            createUniform(uniformName)
+        }
     }
 
     private fun createShader(shaderCode: String, shaderType: Int): Int {
@@ -64,12 +62,10 @@ class ShaderProgram(vertexShaderPath: String, fragmentShaderPath: String) {
     fun createUniform(uniformName: String) {
         val uniformLocation = glGetUniformLocation(programId, uniformName)
         if (uniformLocation < 0) {
-            // Це може бути нормально, якщо шейдер не використовує цей uniform
             System.err.println("Warning: Could not find uniform: $uniformName")
         }
         uniforms[uniformName] = uniformLocation
     }
-
 
     fun setUniform(uniformName: String, value: Int) {
         glUniform1i(uniforms[uniformName]!!, value)

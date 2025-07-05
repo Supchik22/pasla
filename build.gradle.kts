@@ -26,6 +26,9 @@ dependencies {
     runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:natives-windows")
     runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion:natives-windows")
 
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+
     implementation("org.lwjgl:lwjgl-stb:$lwjglVersion")
     runtimeOnly("org.lwjgl:lwjgl-stb:$lwjglVersion:natives-windows")
 

@@ -2,6 +2,7 @@ package io.github.supchik22
 
 import io.github.supchik22.graphics.TextureAtlas
 import io.github.supchik22.rendering.ChunkRendering
+import io.github.supchik22.util.ChunkPos
 
 
 import org.joml.Vector3f
@@ -9,8 +10,6 @@ import java.lang.Math.floorDiv
 import java.lang.Math.floorMod
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
-
-data class ChunkPos(val x: Int, val y: Int, val z: Int)
 
 lateinit var globalWorldGenerator: WorldGenerator
 lateinit var globalTextureAtlas: TextureAtlas

@@ -1,6 +1,5 @@
 package io.github.supchik22.rendering
 
-
 import io.github.supchik22.BlockRegistry
 import io.github.supchik22.Chunk
 import io.github.supchik22.ChunkLoader.getBlockAtWorldSafe
@@ -16,10 +15,42 @@ import org.lwjgl.opengl.GL20.*
 import org.lwjgl.opengl.GL30.*
 import org.lwjgl.system.MemoryUtil
 
-val GRASS_PLANT_ID: Short = 4
+import kotlinx.coroutines.*
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.coroutines.CoroutineContext
+
+// Ця константа не змінюється
+const val GRASS_PLANT_ID: Short = 4
+
+
+object OpenGLCommandQueue {
+    private val queue = ConcurrentLinkedQueue<() -> Unit>()
+
+    fun runOnOpenGLThread(action: () -> Unit) {
+        queue.add(action)
+    }
+    fun processCommands() {
+        while (true) {
+            val action = queue.poll() ?: break // Отримуємо та видаляємо наступну дію, або виходимо, якщо черга порожня
+            action.invoke() // Виконуємо дію
+        }
+    }
+}
+
+/**
+ * Спеціальний CoroutineDispatcher для виконання завдань на потоці OpenGL.
+ * Використовує OpenGLCommandQueue для постановки завдань.
+ */
+object MainDispatcher : CoroutineDispatcher() {
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        OpenGLCommandQueue.runOnOpenGLThread {
+            block.run()
+        }
+    }
+}
 
 class ChunkRendering(
-    private val chunk: Chunk,
+    val chunk: Chunk,
     private val worldGenerator: WorldGenerator,
     private val textureAtlas: TextureAtlas,
     private val lod: Int = 1
@@ -36,9 +67,13 @@ class ChunkRendering(
     private var transparentEboId: Int = 0
     private var transparentVertexCount: Int = 0
 
+    // Скоуп для корутин, які виконуватимуть обчислювальні операції з генерації мешу
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var meshGenerationJob: Job? = null
 
     init {
-        // Генеруємо ID для обох наборів буферів
+        // Генеруємо ID для обох наборів буферів. Це безпечно робити тут, але завантаження даних
+        // повинно відбуватися в OpenGL потоці.
         solidVaoId = glGenVertexArrays()
         solidVboId = glGenBuffers()
         solidEboId = glGenBuffers()
@@ -47,11 +82,46 @@ class ChunkRendering(
         transparentVboId = glGenBuffers()
         transparentEboId = glGenBuffers()
 
-        setupMeshes()
+        // Запускаємо асинхронну генерацію мешу
+        startMeshGeneration()
     }
 
-    private fun setupMeshes() {
-        // Списки для геометрії двох мешів
+    /**
+     * Запускає асинхронну генерацію даних мешу.
+     * Скасовує попередню генерацію, якщо вона ще не завершена.
+     */
+    fun startMeshGeneration() {
+        meshGenerationJob?.cancel() // Скасовуємо попередню задачу генерації, якщо така є
+        meshGenerationJob = scope.launch {
+            try {
+                // Виконуємо обчислення мешу у фоновому потоці (Dispatchers.Default)
+                val (newSolidVertices, newSolidIndices, newTransparentVertices, newTransparentIndices) = generateMeshAsync()
+
+                // Після того, як дані мешу згенеровані, переходимо в основний потік
+                // (або потік OpenGL) для завантаження цих даних у GPU буфери.
+                withContext(MainDispatcher) {
+                    // Важливо: перевіряємо, чи корутина не була скасована під час очікування.
+                    ensureActive()
+                    updateOpenGLBuffers(newSolidVertices, newSolidIndices, newTransparentVertices, newTransparentIndices)
+                }
+            } catch (e: CancellationException) {
+                // Завдання було скасовано (наприклад, чанк вивантажено)
+                println("Chunk mesh generation cancelled for chunk ${chunk.pos}")
+            } catch (e: Exception) {
+                // Обробка інших помилок під час генерації мешу
+                System.err.println("Error during chunk mesh generation for chunk ${chunk.pos}: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Асинхронно генерує дані мешу для чанка.
+     * Ця функція виконується у фоновому потоці.
+     *
+     * @return Об'єкт [MeshData], що містить вершини та індекси для обох типів мешів.
+     */
+    private suspend fun generateMeshAsync(): MeshData = withContext(Dispatchers.Default) {
         val solidVertices = mutableListOf<Float>()
         val solidIndices = mutableListOf<Int>()
 
@@ -72,6 +142,9 @@ class ChunkRendering(
         for (x in 0 until chunkSize) {
             for (y in 0 until chunkSize) {
                 for (z in 0 until chunkSize) {
+                    // Перевіряємо, чи потрібно скасувати корутину (наприклад, якщо чанк вийшов з діапазону)
+                    ensureActive()
+
                     val blockId = blocks[x + z * chunkSize + y * chunkSize * chunkSize]
                     if (blockId == 0.toShort()) continue
 
@@ -88,6 +161,7 @@ class ChunkRendering(
                             val worldY = chunk.pos.y * chunkSize + ny
                             val worldZ = chunk.pos.z * chunkSize + nz
                             val neighborBlock = getBlockAtWorldSafe(worldX.toInt(), worldY.toInt(), worldZ.toInt())
+                            // Якщо сусідній блок null (за межами завантажених чанків) або не суцільний
                             neighborBlock == null || !BlockRegistry.isSolid(neighborBlock)
                         }
                     }
@@ -96,7 +170,7 @@ class ChunkRendering(
                     val blockWorldY = baseChunkPos.y + y
                     val blockWorldZ = baseChunkPos.z + z
 
-                    // UV-координати
+                    // UV-координати функції
                     val u0 = { u: Float -> u }
                     val u1 = { u: Float -> u + uvUnitSize }
                     val v0 = { v: Float -> v }
@@ -211,83 +285,147 @@ class ChunkRendering(
                 }
             }
         }
+        MeshData(solidVertices, solidIndices, transparentVertices, transparentIndices)
+    }
 
-        // Створюємо та заповнюємо буфери для обох мешів
+    /**
+     * Приватний клас даних для повернення згенерованих даних мешу.
+     */
+    private data class MeshData(
+        val solidVertices: List<Float>,
+        val solidIndices: List<Int>,
+        val transparentVertices: List<Float>,
+        val transparentIndices: List<Int>
+    )
+
+    /**
+     * Завантажує згенеровані дані мешу в буфери OpenGL.
+     * Ця функція ПОВИННА бути викликана в потоці, який має доступ до контексту OpenGL.
+     *
+     * @param solidVertices Список вершин для суцільних блоків.
+     * @param solidIndices Список індексів для суцільних блоків.
+     * @param transparentVertices Список вершин для прозорих блоків.
+     * @param transparentIndices Список індексів для прозорих блоків.
+     */
+    private fun updateOpenGLBuffers(
+        solidVertices: List<Float>,
+        solidIndices: List<Int>,
+        transparentVertices: List<Float>,
+        transparentIndices: List<Int>
+    ) {
+        // Очищаємо старі дані буферів перед оновленням
+        cleanupBuffersData()
+
         solidVertexCount = createAndBufferMesh(solidVaoId, solidVboId, solidEboId, solidVertices, solidIndices)
         transparentVertexCount = createAndBufferMesh(transparentVaoId, transparentVboId, transparentEboId, transparentVertices, transparentIndices)
     }
 
+    /**
+     * Створює та заповнює буфери Vertex Array Object (VAO), Vertex Buffer Object (VBO) та Element Buffer Object (EBO).
+     *
+     * @param vaoId ID VAO.
+     * @param vboId ID VBO.
+     * @param eboId ID EBO.
+     * @param vertices Список координат вершин та текстурних координат.
+     * @param indices Список індексів вершин.
+     * @return Кількість індексів для відрисовки.
+     */
     private fun createAndBufferMesh(vaoId: Int, vboId: Int, eboId: Int, vertices: List<Float>, indices: List<Int>): Int {
         if (vertices.isEmpty()) return 0
 
         glBindVertexArray(vaoId)
 
-        // VBO
+        // VBO (Vertex Buffer Object)
         glBindBuffer(GL_ARRAY_BUFFER, vboId)
         val verticesBuffer = MemoryUtil.memAllocFloat(vertices.size)
         verticesBuffer.put(vertices.toFloatArray()).flip()
-        glBufferData(GL_ARRAY_BUFFER, verticesBuffer, GL_STATIC_DRAW)
-        MemoryUtil.memFree(verticesBuffer)
+        glBufferData(GL_ARRAY_BUFFER, verticesBuffer, GL_STATIC_DRAW) // Завантажуємо дані в VBO
+        MemoryUtil.memFree(verticesBuffer) // Звільняємо пам'ять ByteBuffer
 
-        // EBO
+        // EBO (Element Buffer Object)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eboId)
         val indicesBuffer = MemoryUtil.memAllocInt(indices.size)
         indicesBuffer.put(indices.toIntArray()).flip()
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL_STATIC_DRAW)
-        MemoryUtil.memFree(indicesBuffer)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL_STATIC_DRAW) // Завантажуємо дані в EBO
+        MemoryUtil.memFree(indicesBuffer) // Звільняємо пам'ять ByteBuffer
 
-        // Vertex Attributes
-        val stride = 5 * Float.SIZE_BYTES
-        // Position attribute
+        // Vertex Attributes (Пояснення, як інтерпретувати дані у VBO)
+        val stride = 5 * Float.SIZE_BYTES // 3D позиція (3 floats) + 2D текстурні координати (2 floats) = 5 floats
+        // Position attribute (layout location = 0)
         glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0)
         glEnableVertexAttribArray(0)
-        // Texture coordinate attribute
+        // Texture coordinate attribute (layout location = 1)
         glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, (3 * Float.SIZE_BYTES).toLong())
         glEnableVertexAttribArray(1)
 
-        glBindVertexArray(0)
+        glBindVertexArray(0) // Відв'язуємо VAO
 
         // Кількість індексів для відрисовки
         return indices.size
     }
 
+    /**
+     * Очищає лише дані буферів (VBO, EBO), але не VAO.
+     * Це потрібно перед повторним завантаженням нових даних мешу.
+     */
+    private fun cleanupBuffersData() {
+        // Видаляємо старі буфери даних
+        glDeleteBuffers(solidVboId)
+        glDeleteBuffers(solidEboId)
+        glDeleteBuffers(transparentVboId)
+        glDeleteBuffers(transparentEboId)
+
+        // Генеруємо нові ID для буферів. Це важливо, оскільки glBufferData
+        // не завжди перевизначає пам'ять, якщо буфер був видалений.
+        solidVboId = glGenBuffers()
+        solidEboId = glGenBuffers()
+        transparentVboId = glGenBuffers()
+        transparentEboId = glGenBuffers()
+    }
+
+    /**
+     * Рендерить меш чанка.
+     * Ця функція повинна викликатися в головному потоці рендерингу.
+     */
     fun render() {
         // 1. Рендеримо суцільні об'єкти
         if (solidVertexCount > 0) {
-            glDisable(GL_CULL_FACE) // Рослини часто двосторонні
+            glEnable(GL_CULL_FACE) // Зазвичай для суцільних блоків використовується відсікання задніх граней
+            glCullFace(GL_FRONT)
             glBindVertexArray(solidVaoId)
             glDrawElements(GL_TRIANGLES, solidVertexCount, GL_UNSIGNED_INT, 0)
-            glEnable(GL_CULL_FACE)
+
         }
 
         // 2. Рендеримо прозорі об'єкти (після суцільних)
-        // Тут можна додати специфічні налаштування OpenGL, наприклад glDisable(GL_CULL_FACE)
         if (transparentVertexCount > 0) {
-
-            glDisable(GL_CULL_FACE) // Рослини часто двосторонні
-
-            glEnable(GL_BLEND)
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
+            glDisable(GL_CULL_FACE) // Рослини та інші прозорі об'єкти часто двосторонні, відключаємо відсікання
+            glEnable(GL_BLEND) // Включаємо змішування для прозорості
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) // Стандартна функція змішування
 
             glBindVertexArray(transparentVaoId)
             glDrawElements(GL_TRIANGLES, transparentVertexCount, GL_UNSIGNED_INT, 0)
 
-            glEnable(GL_CULL_FACE)
-            glDisable(GL_BLEND)
+            glDisable(GL_BLEND) // Виключаємо змішування після рендерингу прозорих об'єктів
+            glEnable(GL_CULL_FACE) // Повертаємо відсікання граней для подальшого рендерингу
         }
 
-        glBindVertexArray(0)
+        glBindVertexArray(0) // Відв'язуємо будь-який активний VAO
     }
 
+    /**
+     * Повністю очищає всі ресурси OpenGL та скасовує активні корутини.
+     * Повинна викликатися, коли об'єкт ChunkRendering більше не потрібен (наприклад, при вивантаженні чанка).
+     */
     fun cleanup() {
-        // Видаляємо всі буфери
-        glDeleteVertexArrays(solidVaoId)
-        glDeleteBuffers(solidVboId)
-        glDeleteBuffers(solidEboId)
+        meshGenerationJob?.cancel() // Скасовуємо будь-яку активну роботу з генерації мешу
+        scope.cancel() // Скасовуємо скоуп і всі корутини в ньому
 
+        // Видаляємо всі VAO
+        glDeleteVertexArrays(solidVaoId)
         glDeleteVertexArrays(transparentVaoId)
-        glDeleteBuffers(transparentVboId)
-        glDeleteBuffers(transparentEboId)
+
+        // Видаляємо всі VBO та EBO
+        cleanupBuffersData()
     }
 }
