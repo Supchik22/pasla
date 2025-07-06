@@ -1,15 +1,15 @@
 package io.github.supchik22.world.entity
 
 import io.github.supchik22.phyc.AABB
-import io.github.supchik22.world.Chunk
+import io.github.supchik22.world.ChunkLoader
 import org.joml.Vector3f
-import kotlin.math.floor
 import kotlin.math.ceil
-import kotlin.math.abs // Додано для використання в логіці округлення
+import kotlin.math.floor
+import kotlin.math.abs
 
 open class PhysicalEntity : Entity() {
 
-    val pos = Vector3f(0f, 0f, 0f)
+    open val pos = Vector3f(0f, 0f, 0f)
     val velocity = Vector3f(0f, 0f, 0f)
 
     val width = 0.6f
@@ -30,16 +30,14 @@ open class PhysicalEntity : Entity() {
         )
     }
 
-    open fun updatePhysics(chunk: Chunk, deltaTime: Float) {
-        // Гравітація
-        if (!onGround) velocity.y += -9.81f * deltaTime
+    open fun updatePhysics(deltaTime: Float) {
+        if (!onGround) {
+            velocity.y += -9.81f * deltaTime
+        }
 
-        // Обмеження швидкості падіння
         if (velocity.y < -50f) velocity.y = -50f
 
-        // Рух з поділом на кроки
-        // Збільшимо кількість кроків для більшої точності, особливо при швидкому русі
-        val steps = 10 // Збільшено кроки, щоб зменшити ймовірність "проскоку"
+        val steps = 10
         val step = Vector3f(
             velocity.x * deltaTime / steps,
             velocity.y * deltaTime / steps,
@@ -47,76 +45,123 @@ open class PhysicalEntity : Entity() {
         )
 
         repeat(steps) {
-            moveStep(chunk, step)
+            moveStep(step)
         }
     }
 
-    private fun moveStep(chunk: Chunk, step: Vector3f) {
+    private fun moveStep(step: Vector3f) {
+        val originalStepY = step.y
+
+        // --- Рух по Y ---
+        pos.y += step.y
         var currentAABB = getAABB()
-        val originalStep = Vector3f(step) // Зберігаємо оригінальний крок для подальших розрахунків
 
-        // Спочатку застосовуємо рух по Y (гравітація)
-        currentAABB = currentAABB.offset(0f, step.y, 0f)
         var collidedY = false
-        for (block in getCollisions(currentAABB, chunk)) {
-            if (currentAABB.intersects(block)) {
+        for (blockAABB in getCollisions(currentAABB)) {
+            if (currentAABB.intersects(blockAABB)) {
                 collidedY = true
-                if (step.y < 0) { // Якщо рухаємося вниз (падаємо)
-                    currentAABB = currentAABB.copy(minY = block.maxY) // Встановлюємо на верхню грань блоку
-                } else if (step.y > 0) { // Якщо рухаємося вгору (стрибаємо в стелю)
-                    currentAABB = currentAABB.copy(maxY = block.minY) // Встановлюємо на нижню грань блоку
+                if (step.y < 0) {
+                    // Підняти позицію гравця вгору на верхню межу блоку
+                    pos.y = blockAABB.maxY
+                    onGround = true
+                } else {
+                    // Опускаємо гравця під нижню межу блоку
+                    pos.y = blockAABB.minY - height
                 }
-                velocity.y = 0f // Зупиняємо рух по Y
+                velocity.y = 0f
+                currentAABB = getAABB()
+                break
             }
         }
-        // Оновлюємо onGround після обробки колізій по Y
-        onGround = collidedY && originalStep.y < 0f // Використовуємо originalStep.y для коректного визначення падіння
+        if (!collidedY) onGround = false
 
-        // Тепер застосовуємо рух по X
-        currentAABB = currentAABB.offset(step.x, 0f, 0f)
-        for (block in getCollisions(currentAABB, chunk)) {
-            if (currentAABB.intersects(block)) {
-                if (step.x > 0) currentAABB = currentAABB.copy(maxX = block.minX)
-                else currentAABB = currentAABB.copy(minX = block.maxX)
+        // --- Рух по X ---
+        pos.x += step.x
+        currentAABB = getAABB()
+
+        for (blockAABB in getCollisions(currentAABB)) {
+            if (currentAABB.intersects(blockAABB)) {
+                if (step.x > 0) {
+                    pos.x = blockAABB.minX - width / 2f
+                } else {
+                    pos.x = blockAABB.maxX + width / 2f
+                }
                 velocity.x = 0f
+                currentAABB = getAABB()
+                break
             }
         }
 
-        // І, нарешті, рух по Z
-        currentAABB = currentAABB.offset(0f, 0f, step.z)
-        for (block in getCollisions(currentAABB, chunk)) {
-            if (currentAABB.intersects(block)) {
-                if (step.z > 0) currentAABB = currentAABB.copy(maxZ = block.minZ)
-                else currentAABB = currentAABB.copy(minZ = block.maxZ)
+        // --- Рух по Z ---
+        pos.z += step.z
+        currentAABB = getAABB()
+
+        for (blockAABB in getCollisions(currentAABB)) {
+            if (currentAABB.intersects(blockAABB)) {
+                if (step.z > 0) {
+                    pos.z = blockAABB.minZ - width / 2f
+                } else {
+                    pos.z = blockAABB.maxZ + width / 2f
+                }
                 velocity.z = 0f
+                currentAABB = getAABB()
+                break
             }
         }
 
-        // Оновлюємо позицію сутності на основі остаточної AABB
-        pos.x = (currentAABB.minX + currentAABB.maxX) / 2f
-        pos.y = currentAABB.minY // Важливо: встановлюємо на нижню межу AABB
-        pos.z = (currentAABB.minZ + currentAABB.maxZ) / 2f
+        // --- Виштовхування при застряганні ---
+        val collisions = getCollisions(currentAABB)
+        for (blockAABB in collisions) {
+            if (currentAABB.intersects(blockAABB)) {
+                val overlapX1 = blockAABB.maxX - currentAABB.minX
+                val overlapX2 = currentAABB.maxX - blockAABB.minX
+                val overlapY1 = blockAABB.maxY - currentAABB.minY
+                val overlapY2 = currentAABB.maxY - blockAABB.minY
+                val overlapZ1 = blockAABB.maxZ - currentAABB.minZ
+                val overlapZ2 = currentAABB.maxZ - blockAABB.minZ
+
+                val overlapX = if (overlapX1 < overlapX2) overlapX1 else -overlapX2
+                val overlapY = if (overlapY1 < overlapY2) overlapY1 else -overlapY2
+                val overlapZ = if (overlapZ1 < overlapZ2) overlapZ1 else -overlapZ2
+
+                val absX = abs(overlapX)
+                val absY = abs(overlapY)
+                val absZ = abs(overlapZ)
+
+                when {
+                    absX <= absY && absX <= absZ -> {
+                        pos.x += overlapX
+                        velocity.x = 0f
+                    }
+                    absY <= absX && absY <= absZ -> {
+                        pos.y += overlapY
+                        velocity.y = 0f
+                        if (overlapY > 0) onGround = true
+                    }
+                    else -> {
+                        pos.z += overlapZ
+                        velocity.z = 0f
+                    }
+                }
+                currentAABB = getAABB()
+            }
+        }
     }
 
-    private fun getCollisions(aabb: AABB, chunk: Chunk): List<AABB> {
+    private fun getCollisions(aabb: AABB): List<AABB> {
         val list = mutableListOf<AABB>()
 
-        // Використовуємо floor і ceil для коректного визначення діапазону блоків,
-        // які може перетинати AABB, враховуючи рух.
-        // Додаємо невеликий епсілон (0.001f) до min/max, щоб уникнути проблем з рухомою точкою
-        // і переконатися, що ми захоплюємо блоки, що знаходяться на межі.
-        val startX = floor(aabb.minX - 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
-        val endX = ceil(aabb.maxX + 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
-        val startY = floor(aabb.minY - 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
-        val endY = ceil(aabb.maxY + 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
-        val startZ = floor(aabb.minZ - 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
-        val endZ = ceil(aabb.maxZ + 0.001f).toInt().coerceIn(0, Chunk.CHUNK_SIZE - 1)
+        val startX = floor(aabb.minX).toInt()
+        val endX = ceil(aabb.maxX).toInt()
+        val startY = floor(aabb.minY).toInt()
+        val endY = ceil(aabb.maxY).toInt()
+        val startZ = floor(aabb.minZ).toInt()
+        val endZ = ceil(aabb.maxZ).toInt()
 
         for (x in startX..endX) {
             for (y in startY..endY) {
                 for (z in startZ..endZ) {
-                    if (!chunk.isInBounds(x, y, z)) continue // Перевірка меж чанку
-                    if (chunk.isSolid(x, y, z)) {
+                    if (ChunkLoader.isBlockSolidAt(x, y, z)) {
                         list.add(AABB(x.toFloat(), y.toFloat(), z.toFloat(), x + 1f, y + 1f, z + 1f))
                     }
                 }

@@ -8,12 +8,18 @@ class Chunk(val pos: Vector3f) {
         const val CHUNK_SIZE = 16
         const val CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
     }
-
+    var isDirty: Boolean = true
     private val blocks: ShortArray = ShortArray(CHUNK_VOLUME)
 
     fun getBlocks(): ShortArray = blocks
 
+    fun markDirty() {
+        isDirty = true
+    }
+
+
     private fun index(x: Int, y: Int, z: Int): Int {
+
         require(x in 0 until CHUNK_SIZE)
         require(y in 0 until CHUNK_SIZE)
         require(z in 0 until CHUNK_SIZE)
@@ -73,4 +79,10 @@ class Chunk(val pos: Vector3f) {
 
         return false
     }
+
+    fun clearBlocks() {
+        blocks.fill(0)
+        markDirty()
+    }
+
 }

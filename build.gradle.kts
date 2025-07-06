@@ -16,6 +16,7 @@ val lwjglVersion = "3.3.3"
 dependencies {
     testImplementation(kotlin("test"))
 
+
     // LWJGL core
     implementation("org.lwjgl:lwjgl:$lwjglVersion")
     implementation("org.lwjgl:lwjgl-glfw:$lwjglVersion")

@@ -3,14 +3,13 @@ package io.github.supchik22
 import io.github.supchik22.rendering.OpenGLCommandQueue
 import io.github.supchik22.rendering.Renderer
 import io.github.supchik22.util.ChunkPos
-import io.github.supchik22.util.GameTime // Import the GameTime object
-import io.github.supchik22.util.Window // Import the Window class
+import io.github.supchik22.util.GameTime
+import io.github.supchik22.util.Window
 import io.github.supchik22.world.Chunk
 import io.github.supchik22.world.ChunkLoader
 import io.github.supchik22.world.entity.Player
 import org.joml.Vector3f
-import kotlin.div
-import kotlin.text.toInt
+import org.lwjgl.glfw.GLFW.* // Import GLFW for key codes
 
 /**
  * Main class orchestrating the game's lifecycle, including initialization,
@@ -26,9 +25,7 @@ class Game {
 
     val player: Player = Player()
 
-    /**
-     * Initializes all core game components and resources.
-     */
+
     fun init() {
         // Initialize the game window
         window = Window(2000, 1000, "Voxel World")
@@ -46,17 +43,18 @@ class Game {
         ChunkLoader.initialize(worldGenerator, renderer.textureAtlas)
 
         // Initialize the camera and input handler, linking them to the window
-        camera = Camera()
+        camera = player.camera
 
-        player.teleport(Vector3f(0f,170f,1f))
+
 
         InputHandler.initialize(window.windowHandle)
 
         // Initialize game time tracking
         GameTime.init()
 
-        // Perform initial chunk loading based on camera position
-        ChunkLoader.updateLoadedChunks(camera.position)
+        // Perform initial chunk loading based on player's initial position
+        // The camera position will be updated to player.pos in the update loop
+        ChunkLoader.updateLoadedChunks(player.pos)
 
         // Set up the framebuffer size callback to update renderer dimensions
         window.setFramebufferSizeCallback { width, height ->
@@ -75,11 +73,15 @@ class Game {
             // Update game logic
             update(deltaTime)
 
+
+
             // Render the scene
             render()
 
             // Swap buffers to display the rendered frame and poll for events
             window.swapBuffers()
+            glfwSwapInterval(0)
+
             window.pollEvents()
 
             // Update FPS counter
@@ -91,26 +93,41 @@ class Game {
      * Updates game state, including camera movement and chunk loading.
      */
     private fun update(deltaTime: Float) {
-        // Розрахунок поточного чанку камери
+
+        player.updatePhysics(deltaTime)
+
+        camera.position.set(player.pos)
+        camera.position.add(0f,player.height,0f)
+
+        if (ChunkLoader.areChunksLoadedAround(player.pos, radiusChunks = 1) && !(player.loaded) ) {
+            player.loaded = true
+            player.teleport(Vector3f(0f,200f,0f))
+
+        }
+
+        // --- Chunk Loading based on Player/Camera Position ---
+        // Calculate current chunk position based on player's actual position
         val currentChunkPos = ChunkPos(
-            (camera.position.x / Chunk.CHUNK_SIZE).toInt(),
-            (camera.position.y / Chunk.CHUNK_SIZE).toInt(),
-            (camera.position.z / Chunk.CHUNK_SIZE).toInt()
+            (player.pos.x / Chunk.CHUNK_SIZE).toInt(),
+            (player.pos.y / Chunk.CHUNK_SIZE).toInt(),
+            (player.pos.z / Chunk.CHUNK_SIZE).toInt()
         )
 
-
+        // Only update loaded chunks if the player has moved into a new chunk
         if (currentChunkPos != lastCameraChunkPos) {
-            ChunkLoader.updateLoadedChunks(camera.position)
+            println("DEBUG Game: Player moved to new chunk: $currentChunkPos. Updating loaded chunks.")
+            ChunkLoader.updateLoadedChunks(player.pos) // Use player.pos for chunk loading
             lastCameraChunkPos = currentChunkPos
         }
 
-        val playerChunk = ChunkLoader.getChunkContainingPosition(player.pos) ?: return
-
-
-        // Оновити фізику гравця
-        player.updatePhysics(playerChunk, deltaTime)
-        camera.position.set(player.pos)
-
+        // Check if the chunk containing the player is loaded. If not, something is wrong
+        // with chunk loading or the player is outside the loaded world.
+        val playerChunk = ChunkLoader.getChunkContainingPosition(player.pos)
+        if (playerChunk == null) {
+            println("WARNING: Player is in an unloaded chunk at ${player.pos}!")
+            // You might want to teleport the player back to a safe zone or load the chunk immediately.
+        }
+        InputHandler.update()
         OpenGLCommandQueue.processCommands()
     }
 

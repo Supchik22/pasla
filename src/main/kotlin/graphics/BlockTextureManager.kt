@@ -33,9 +33,6 @@ fun getTextureIdForBlockFace(blockId: Short, face: Face): Short {
         else -> TEXTURE_DIRT_ID
     }
 
-    if (blockId == 1.toShort()) {
-        println("GRASS block — face=$face => textureId=$result")
-    }
 
     return result
 }

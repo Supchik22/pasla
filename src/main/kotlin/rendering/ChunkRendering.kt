@@ -145,6 +145,8 @@ class ChunkRendering(
                     val blockId = blocks[x + z * chunkSize + y * chunkSize * chunkSize]
                     if (blockId == 0.toShort()) continue
 
+
+
                     val isFaceVisible = { dx: Int, dy: Int, dz: Int ->
                         val nx = x + dx
                         val ny = y + dy
@@ -385,30 +387,36 @@ class ChunkRendering(
      * Ця функція повинна викликатися в головному потоці рендерингу.
      */
     fun render() {
+        // Якщо чанк відмічено як "брудний" — оновлюємо його меш
+        if (chunk.isDirty) {
+            chunk.isDirty = false
+            startMeshGeneration()
+        }
+
         // 1. Рендеримо суцільні об'єкти
         if (solidVertexCount > 0) {
-            glEnable(GL_CULL_FACE) // Зазвичай для суцільних блоків використовується відсікання задніх граней
+            glEnable(GL_CULL_FACE)
             glCullFace(GL_FRONT)
             glBindVertexArray(solidVaoId)
             glDrawElements(GL_TRIANGLES, solidVertexCount, GL_UNSIGNED_INT, 0)
-
         }
 
-        // 2. Рендеримо прозорі об'єкти (після суцільних)
+        // 2. Рендеримо прозорі об'єкти
         if (transparentVertexCount > 0) {
-            glDisable(GL_CULL_FACE) // Рослини та інші прозорі об'єкти часто двосторонні, відключаємо відсікання
-            glEnable(GL_BLEND) // Включаємо змішування для прозорості
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) // Стандартна функція змішування
+            glDisable(GL_CULL_FACE)
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
             glBindVertexArray(transparentVaoId)
             glDrawElements(GL_TRIANGLES, transparentVertexCount, GL_UNSIGNED_INT, 0)
 
-            glDisable(GL_BLEND) // Виключаємо змішування після рендерингу прозорих об'єктів
-            glEnable(GL_CULL_FACE) // Повертаємо відсікання граней для подальшого рендерингу
+            glDisable(GL_BLEND)
+            glEnable(GL_CULL_FACE)
         }
 
-        glBindVertexArray(0) // Відв'язуємо будь-який активний VAO
+        glBindVertexArray(0)
     }
+
 
     /**
      * Повністю очищає всі ресурси OpenGL та скасовує активні корутини.

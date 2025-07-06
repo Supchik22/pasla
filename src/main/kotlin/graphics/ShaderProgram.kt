@@ -1,5 +1,6 @@
 package io.github.supchik22.graphics
 import org.joml.Matrix4f
+import org.joml.Vector3f
 import org.lwjgl.opengl.GL20.*
 import org.lwjgl.system.MemoryStack
 import java.nio.FloatBuffer
@@ -11,10 +12,11 @@ private fun loadResource(fileName: String): String {
     return object {}.javaClass.getResource("/$fileName")?.readText()
         ?: throw RuntimeException("Resource '$fileName' not found")
 }
+
 class ShaderProgram(
     vertexShaderPath: String,
     fragmentShaderPath: String,
-    uniformsToCreate: List<String> = listOf("projection", "view", "model", "ourTexture")
+    uniformsToCreate: List<String> = listOf("projection", "view", "model", "ourTexture","cameraPos")
 ) {
     private val programId: Int = glCreateProgram()
     private var vertexShaderId: Int = 0
@@ -78,6 +80,11 @@ class ShaderProgram(
             glUniformMatrix4fv(uniforms[uniformName]!!, false, fb)
         }
     }
+    fun setUniform(uniformName: String, value: Vector3f) {
+        val location = uniforms[uniformName] ?: error("Uniform $uniformName not found")
+        glUniform3f(location, value.x, value.y, value.z)
+    }
+
 
     fun use() {
         glUseProgram(programId)

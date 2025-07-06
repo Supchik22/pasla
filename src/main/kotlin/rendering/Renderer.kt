@@ -87,7 +87,7 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         shaderProgram.setUniform("projection", projectionMatrix) // Pass projection matrix to shader
         shaderProgram.setUniform("view", viewMatrix) // Pass view matrix to shader
         shaderProgram.setUniform("ourTexture", 0) // Tell the shader the texture is in texture unit 0
-
+        shaderProgram.setUniform("cameraPos", camera.position)
         textureAtlas.bind()
         for (chunkRendering in ChunkLoader.getAllChunkRenderings()) {
             val modelMatrix = Matrix4f()
