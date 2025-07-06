@@ -1,8 +1,7 @@
 package io.github.supchik22.rendering
 
 import io.github.supchik22.Camera
-import io.github.supchik22.Chunk
-import io.github.supchik22.ChunkLoader
+import io.github.supchik22.world.ChunkLoader
 import io.github.supchik22.graphics.ShaderProgram
 import io.github.supchik22.graphics.TextureAtlas
 import org.joml.Matrix4f

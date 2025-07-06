@@ -1,8 +1,8 @@
 package io.github.supchik22.rendering
 
-import io.github.supchik22.BlockRegistry
-import io.github.supchik22.Chunk
-import io.github.supchik22.ChunkLoader.getBlockAtWorldSafe
+import io.github.supchik22.world.BlockRegistry
+import io.github.supchik22.world.Chunk
+import io.github.supchik22.world.ChunkLoader.getBlockAtWorldSafe
 import io.github.supchik22.WorldGenerator
 import io.github.supchik22.graphics.GRASS_PLANT_TEXTURE_ID
 import io.github.supchik22.graphics.TextureAtlas
@@ -37,14 +37,11 @@ object OpenGLCommandQueue {
     }
 }
 
-/**
- * Спеціальний CoroutineDispatcher для виконання завдань на потоці OpenGL.
- * Використовує OpenGLCommandQueue для постановки завдань.
- */
 object MainDispatcher : CoroutineDispatcher() {
     override fun dispatch(context: CoroutineContext, block: Runnable) {
         OpenGLCommandQueue.runOnOpenGLThread {
             block.run()
+
         }
     }
 }

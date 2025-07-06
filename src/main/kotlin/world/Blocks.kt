@@ -1,4 +1,4 @@
-package io.github.supchik22
+package io.github.supchik22.world
 
 import java.awt.Color
 

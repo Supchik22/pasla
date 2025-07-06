@@ -1,14 +1,17 @@
-package io.github.supchik22
+package io.github.supchik22.world
 
+import io.github.supchik22.WorldGenerator
 import io.github.supchik22.graphics.TextureAtlas
 import io.github.supchik22.rendering.ChunkRendering
 import io.github.supchik22.util.ChunkPos
 
 
 import org.joml.Vector3f
+import org.joml.Vector3i
 import java.lang.Math.floorDiv
 import java.lang.Math.floorMod
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.floor
 import kotlin.random.Random
 
 lateinit var globalWorldGenerator: WorldGenerator
@@ -22,7 +25,7 @@ object ChunkLoader {
     private const val WORLD_SEED = 12345L
     private val random = Random(WORLD_SEED)
 
-    const val RENDER_DISTANCE_CHUNKS = 10
+    const val RENDER_DISTANCE_CHUNKS = 4
     const val MAX_WORLD_HEIGHT_CHUNKS = 20
 
     fun initialize(worldGenerator: WorldGenerator, textureAtlas: TextureAtlas) {
@@ -40,7 +43,7 @@ object ChunkLoader {
                 chunkPos.y,
                 chunkPos.z,
                 newChunk.getBlocks(),
-                Chunk.CHUNK_SIZE
+                Chunk.Companion.CHUNK_SIZE
             )
 
             val newChunkRendering = ChunkRendering(newChunk, globalWorldGenerator, globalTextureAtlas, lod)
@@ -50,7 +53,7 @@ object ChunkLoader {
     }
 
     fun updateLoadedChunks(observerPosition: Vector3f) {
-        val chunkSizeWorld = Chunk.CHUNK_SIZE * 2f
+        val chunkSizeWorld = Chunk.Companion.CHUNK_SIZE * 2f
         val observerChunkX = (observerPosition.x / chunkSizeWorld).toInt()
         val observerChunkY = (observerPosition.y / chunkSizeWorld).toInt()
         val observerChunkZ = (observerPosition.z / chunkSizeWorld).toInt()
@@ -113,7 +116,7 @@ object ChunkLoader {
     }
 
     fun getBlockAtWorld(x: Int, y: Int, z: Int): Short {
-        val chunkSize = Chunk.CHUNK_SIZE
+        val chunkSize = Chunk.Companion.CHUNK_SIZE
         val chunkX = floorDiv(x, chunkSize)
         val chunkY = floorDiv(y, chunkSize)
         val chunkZ = floorDiv(z, chunkSize)
@@ -128,7 +131,7 @@ object ChunkLoader {
         return chunk.getBlocks()[localX + localZ * chunkSize + localY * chunkSize * chunkSize]
     }
     fun getBlockAtWorldSafe(x: Int, y: Int, z: Int): Short? {
-        val chunkSize = Chunk.CHUNK_SIZE
+        val chunkSize = Chunk.Companion.CHUNK_SIZE
         val chunkX = floorDiv(x, chunkSize)
         val chunkY = floorDiv(y, chunkSize)
         val chunkZ = floorDiv(z, chunkSize)
@@ -143,4 +146,27 @@ object ChunkLoader {
         return chunk.getBlocks()[localX + localZ * chunkSize + localY * chunkSize * chunkSize]
     }
 
+    fun getChunkContainingPosition(pos: Vector3f): Chunk? {
+        val chunkX = (pos.x / Chunk.CHUNK_SIZE).toInt()
+        val chunkY = (pos.y / Chunk.CHUNK_SIZE).toInt()
+        val chunkZ = (pos.z / Chunk.CHUNK_SIZE).toInt()
+
+        return loadedChunks[ChunkPos(chunkX, chunkY, chunkZ)]
+    }
+
+    fun getBlockAtGlobalPos(globalPos: Vector3i): Short? {
+        val chunkPos = ChunkPos(
+            floor(globalPos.x.toFloat() / Chunk.CHUNK_SIZE).toInt(),
+            floor(globalPos.y.toFloat() / Chunk.CHUNK_SIZE).toInt(),
+            floor(globalPos.z.toFloat() / Chunk.CHUNK_SIZE).toInt()
+        )
+
+        val chunk = loadedChunks[chunkPos] ?: return null // Повернути null, якщо чанк не завантажений
+
+        val localX = globalPos.x - chunk.pos.x.toInt()
+        val localY = globalPos.y - chunk.pos.y.toInt()
+        val localZ = globalPos.z - chunk.pos.z.toInt()
+
+        return chunk.getBlock(localX, localY, localZ)
+    }
 }
