@@ -37,6 +37,19 @@ dependencies {
     implementation("org.joml:joml:1.10.5")
 }
 
+
+val imguiVersion = "1.89.0"
+dependencies {
+
+    implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
+    // Залежності ImGui-Java
+    implementation("io.github.spair:imgui-java-binding:$imguiVersion")
+    implementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion")
+
+    // Нативні бібліотеки ImGui-Java для Windows
+    runtimeOnly("io.github.spair:imgui-java-natives-windows:$imguiVersion")
+}
+
 tasks.test {
     useJUnitPlatform()
 }

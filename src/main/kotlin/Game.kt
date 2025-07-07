@@ -1,5 +1,6 @@
 package io.github.supchik22
 
+import io.github.supchik22.graphics.renderHUD
 import io.github.supchik22.rendering.OpenGLCommandQueue
 import io.github.supchik22.rendering.Renderer
 import io.github.supchik22.util.ChunkPos
@@ -11,6 +12,7 @@ import io.github.supchik22.world.entity.Player
 import org.joml.Vector3f
 import org.lwjgl.glfw.GLFW.* // Import GLFW for key codes
 
+
 /**
  * Main class orchestrating the game's lifecycle, including initialization,
  * the game loop, updates, rendering, and resource cleanup.
@@ -21,9 +23,14 @@ class Game {
     private lateinit var camera: Camera
     private lateinit var worldGenerator: WorldGenerator
 
+    private lateinit var imGuiLayer: ImGuiLayer
+
     private var lastCameraChunkPos: ChunkPos? = null
 
     val player: Player = Player()
+
+    private val FIXED_TIMESTEP = 1f / 60f  // 60 фізичних кадрів на секунду
+    private var physicsAccumulator = 0f
 
 
     fun init() {
@@ -45,16 +52,19 @@ class Game {
         // Initialize the camera and input handler, linking them to the window
         camera = player.camera
 
-
-
         InputHandler.initialize(window.windowHandle)
 
         // Initialize game time tracking
         GameTime.init()
 
+
         // Perform initial chunk loading based on player's initial position
         // The camera position will be updated to player.pos in the update loop
         ChunkLoader.updateLoadedChunks(player.pos)
+
+        imGuiLayer = ImGuiLayer()
+        imGuiLayer.init(window.windowHandle)
+
 
         // Set up the framebuffer size callback to update renderer dimensions
         window.setFramebufferSizeCallback { width, height ->
@@ -70,17 +80,20 @@ class Game {
             // Update delta time for consistent movement and physics
             val deltaTime = GameTime.updateDeltaTime().toFloat()
 
-            // Update game logic
-            update(deltaTime)
+            physicsAccumulator += deltaTime
 
-
+            // --- Обробка фіксованих фізичних кадрів ---
+            while (physicsAccumulator >= FIXED_TIMESTEP) {
+                update(FIXED_TIMESTEP)
+                physicsAccumulator -= FIXED_TIMESTEP
+            }
 
             // Render the scene
             render()
 
+
             // Swap buffers to display the rendered frame and poll for events
             window.swapBuffers()
-            glfwSwapInterval(0)
 
             window.pollEvents()
 
@@ -99,10 +112,10 @@ class Game {
         camera.position.set(player.pos)
         camera.position.add(0f,player.height,0f)
 
+
         if (ChunkLoader.areChunksLoadedAround(player.pos, radiusChunks = 1) && !(player.loaded) ) {
             player.loaded = true
             player.teleport(Vector3f(0f,200f,0f))
-
         }
 
         // --- Chunk Loading based on Player/Camera Position ---
@@ -136,7 +149,10 @@ class Game {
      */
     private fun render() {
         renderer.render(camera)
+
+        imGuiLayer.render()
     }
+
 
     /**
      * Cleans up all allocated resources before exiting the application.
@@ -145,5 +161,6 @@ class Game {
         ChunkLoader.cleanupAllChunks() // Release chunk-related resources
         renderer.cleanup() // Release renderer-related resources (shaders, textures)
         window.destroy() // Destroy the GLFW window and terminate GLFW
+        imGuiLayer.dispose()
     }
 }

@@ -6,6 +6,8 @@ import io.github.supchik22.graphics.ShaderProgram
 import io.github.supchik22.graphics.TextureAtlas
 import org.joml.Matrix4f
 import org.joml.Math
+import org.lwjgl.glfw.GLFW.glfwSwapInterval
+import org.lwjgl.opengl.GL
 import org.lwjgl.opengl.GL11.*
 import java.awt.Color
 
@@ -27,6 +29,9 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         glEnable(GL_DEPTH_TEST) // Enable depth testing for proper 3D rendering
         glEnable(GL_CULL_FACE) // Enable face culling for optimization
         glCullFace(GL_BACK) // Cull back faces
+
+
+        glfwSwapInterval(0)
 
         val bgColor = Color.decode("#bbe1fa") // A pleasant sky blue background color
         glClearColor(bgColor.red / 255.0f, bgColor.green / 255.0f, bgColor.blue / 255.0f, 1.0f)
@@ -87,7 +92,7 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         shaderProgram.setUniform("projection", projectionMatrix) // Pass projection matrix to shader
         shaderProgram.setUniform("view", viewMatrix) // Pass view matrix to shader
         shaderProgram.setUniform("ourTexture", 0) // Tell the shader the texture is in texture unit 0
-        shaderProgram.setUniform("cameraPos", camera.position)
+
         textureAtlas.bind()
         for (chunkRendering in ChunkLoader.getAllChunkRenderings()) {
             val modelMatrix = Matrix4f()
@@ -99,6 +104,8 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         textureAtlas.unbind() // Unbind the texture atlas
 
         shaderProgram.detach() // Deactivate the shader program
+
+
     }
 
     /**

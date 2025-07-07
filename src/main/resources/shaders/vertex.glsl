@@ -10,7 +10,7 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform vec3 cameraPos;
-uniform float curvatureStrength = 0.0003;
+uniform float curvatureStrength = 0.0000;
 
 void main()
 {

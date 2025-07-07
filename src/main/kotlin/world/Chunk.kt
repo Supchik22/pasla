@@ -5,10 +5,11 @@ import org.joml.Vector3i
 
 class Chunk(val pos: Vector3f) {
     companion object {
-        const val CHUNK_SIZE = 16
+        const val CHUNK_SIZE = 42
         const val CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
     }
     var isDirty: Boolean = true
+
     private val blocks: ShortArray = ShortArray(CHUNK_VOLUME)
 
     fun getBlocks(): ShortArray = blocks
@@ -84,5 +85,11 @@ class Chunk(val pos: Vector3f) {
         blocks.fill(0)
         markDirty()
     }
+    fun isEmpty(): Boolean {
+        val blocks = getBlocks()
+
+        return blocks.all { it == 0.toShort() }
+    }
+
 
 }

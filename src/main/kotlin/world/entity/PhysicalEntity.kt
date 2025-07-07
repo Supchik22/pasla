@@ -3,9 +3,7 @@ package io.github.supchik22.world.entity
 import io.github.supchik22.phyc.AABB
 import io.github.supchik22.world.ChunkLoader
 import org.joml.Vector3f
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.abs
+import kotlin.math.*
 
 open class PhysicalEntity : Entity() {
 
@@ -16,6 +14,8 @@ open class PhysicalEntity : Entity() {
     val height = 1.8f
 
     var onGround = false
+
+    open var mass: Float = 1.0f
 
     fun teleport(p: Vector3f) {
         pos.set(p)
@@ -30,9 +30,41 @@ open class PhysicalEntity : Entity() {
         )
     }
 
+    fun clampAirControlVelocity(currentVel: Vector3f, targetVel: Vector3f, maxAngleDeg: Float, deltaTime: Float, airAcceleration: Float): Vector3f {
+        val currentDir = Vector3f(currentVel.x, 0f, currentVel.z)
+        val targetDir = Vector3f(targetVel.x, 0f, targetVel.z)
+
+        if (currentDir.lengthSquared() < 0.001f) {
+            return Vector3f(targetVel)
+        }
+
+        currentDir.normalize()
+        targetDir.normalize()
+
+        val dot = currentDir.dot(targetDir).coerceIn(-1f, 1f)
+        val angle = acos(dot.toDouble()).toFloat() * (180f / Math.PI.toFloat())
+
+        val resultDir = if (angle <= maxAngleDeg) {
+            targetDir
+        } else {
+            // Обертаємо поточний напрямок у бік цільового
+            val maxAngleRad = Math.toRadians(maxAngleDeg.toDouble()).toFloat()
+            val angleRatio = maxAngleRad / acos(dot.toDouble()).toFloat()
+            currentDir.lerp(targetDir, angleRatio).normalize()
+        }
+
+        val speed = Vector3f(currentVel.x, 0f, currentVel.z).length()
+        val limitedVel = Vector3f(resultDir).mul(speed)
+
+        limitedVel.x += (targetVel.x - limitedVel.x) * airAcceleration * deltaTime / mass
+        limitedVel.z += (targetVel.z - limitedVel.z) * airAcceleration * deltaTime / mass
+
+        return Vector3f(limitedVel.x, currentVel.y, limitedVel.z)
+    }
+
     open fun updatePhysics(deltaTime: Float) {
         if (!onGround) {
-            velocity.y += -9.81f * deltaTime
+            velocity.y += (-9.81f * deltaTime)
         }
 
         if (velocity.y < -50f) velocity.y = -50f
@@ -44,85 +76,94 @@ open class PhysicalEntity : Entity() {
             velocity.z * deltaTime / steps
         )
 
+        var wasOnGround = false
         repeat(steps) {
-            moveStep(step)
+            if (moveStep(step)) {
+                wasOnGround = true
+            }
         }
+        onGround = wasOnGround
     }
 
-    private fun moveStep(step: Vector3f) {
-        val originalStepY = step.y
+    // moveStep повертає true, якщо був контакт знизу
+    private fun moveStep(step: Vector3f): Boolean {
+        var touchedGround = false
 
-        // --- Рух по Y ---
+        // Y-вісь
         pos.y += step.y
-        var currentAABB = getAABB()
-
-        var collidedY = false
-        for (blockAABB in getCollisions(currentAABB)) {
-            if (currentAABB.intersects(blockAABB)) {
-                collidedY = true
-                if (step.y < 0) {
-                    // Підняти позицію гравця вгору на верхню межу блоку
-                    pos.y = blockAABB.maxY
-                    onGround = true
-                } else {
-                    // Опускаємо гравця під нижню межу блоку
-                    pos.y = blockAABB.minY - height
-                }
+        var aabb = getAABB()
+        for (block in getCollisions(aabb)) {
+            if (aabb.intersects(block)) {
+                // Зупиняємо рух по Y, не змінюємо положення
+                pos.y -= step.y
                 velocity.y = 0f
-                currentAABB = getAABB()
+                if (step.y < 0f) touchedGround = true
                 break
             }
         }
-        if (!collidedY) onGround = false
 
-        // --- Рух по X ---
+        // X-вісь
         pos.x += step.x
-        currentAABB = getAABB()
-
-        for (blockAABB in getCollisions(currentAABB)) {
-            if (currentAABB.intersects(blockAABB)) {
-                if (step.x > 0) {
-                    pos.x = blockAABB.minX - width / 2f
-                } else {
-                    pos.x = blockAABB.maxX + width / 2f
-                }
+        aabb = getAABB()
+        for (block in getCollisions(aabb)) {
+            if (aabb.intersects(block)) {
+                pos.x -= step.x
                 velocity.x = 0f
-                currentAABB = getAABB()
                 break
             }
         }
 
-        // --- Рух по Z ---
+        // Z-вісь
         pos.z += step.z
-        currentAABB = getAABB()
-
-        for (blockAABB in getCollisions(currentAABB)) {
-            if (currentAABB.intersects(blockAABB)) {
-                if (step.z > 0) {
-                    pos.z = blockAABB.minZ - width / 2f
-                } else {
-                    pos.z = blockAABB.maxZ + width / 2f
-                }
+        aabb = getAABB()
+        for (block in getCollisions(aabb)) {
+            if (aabb.intersects(block)) {
+                pos.z -= step.z
                 velocity.z = 0f
-                currentAABB = getAABB()
                 break
             }
         }
 
-        // --- Виштовхування при застряганні ---
-        val collisions = getCollisions(currentAABB)
-        for (blockAABB in collisions) {
-            if (currentAABB.intersects(blockAABB)) {
-                val overlapX1 = blockAABB.maxX - currentAABB.minX
-                val overlapX2 = currentAABB.maxX - blockAABB.minX
-                val overlapY1 = blockAABB.maxY - currentAABB.minY
-                val overlapY2 = currentAABB.maxY - blockAABB.minY
-                val overlapZ1 = blockAABB.maxZ - currentAABB.minZ
-                val overlapZ2 = currentAABB.maxZ - blockAABB.minZ
+        return touchedGround
+    }
 
-                val overlapX = if (overlapX1 < overlapX2) overlapX1 else -overlapX2
-                val overlapY = if (overlapY1 < overlapY2) overlapY1 else -overlapY2
-                val overlapZ = if (overlapZ1 < overlapZ2) overlapZ1 else -overlapZ2
+
+    private fun getCollisions(aabb: AABB): List<AABB> {
+        val list = mutableListOf<AABB>()
+
+        val startX = floor(aabb.minX).toInt()
+        val endX = floor(aabb.maxX).toInt()
+        val startY = floor(aabb.minY).toInt()
+        val endY = floor(aabb.maxY).toInt()
+        val startZ = floor(aabb.minZ).toInt()
+        val endZ = floor(aabb.maxZ).toInt()
+
+        for (x in startX..endX) {
+            for (y in startY..endY) {
+                for (z in startZ..endZ) {
+                    if (ChunkLoader.isBlockSolidAt(x, y, z)) {
+                        list.add(AABB(x.toFloat(), y.toFloat(), z.toFloat(), x + 1f, y + 1f, z + 1f))
+                    }
+                }
+            }
+        }
+        return list
+    }
+    private fun resolveOverlaps(): Boolean {
+        var resolved = false
+        var aabb = getAABB()
+        for (block in getCollisions(aabb)) {
+            if (aabb.intersects(block)) {
+                val overlapX1 = block.maxX - aabb.minX
+                val overlapX2 = aabb.maxX - block.minX
+                val overlapY1 = block.maxY - aabb.minY
+                val overlapY2 = aabb.maxY - block.minY
+                val overlapZ1 = block.maxZ - aabb.minZ
+                val overlapZ2 = aabb.maxZ - block.minZ
+
+                val overlapX = if (overlapX1 < overlapX2) -overlapX1 else overlapX2
+                val overlapY = if (overlapY1 < overlapY2) -overlapY1 else overlapY2
+                val overlapZ = if (overlapZ1 < overlapZ2) -overlapZ1 else overlapZ2
 
                 val absX = abs(overlapX)
                 val absY = abs(overlapY)
@@ -136,37 +177,19 @@ open class PhysicalEntity : Entity() {
                     absY <= absX && absY <= absZ -> {
                         pos.y += overlapY
                         velocity.y = 0f
-                        if (overlapY > 0) onGround = true
+                        if (overlapY > 0f) onGround = true
                     }
                     else -> {
                         pos.z += overlapZ
                         velocity.z = 0f
                     }
                 }
-                currentAABB = getAABB()
+
+                resolved = true
+                aabb = getAABB() // оновити AABB після зсуву
             }
         }
+        return resolved
     }
 
-    private fun getCollisions(aabb: AABB): List<AABB> {
-        val list = mutableListOf<AABB>()
-
-        val startX = floor(aabb.minX).toInt()
-        val endX = ceil(aabb.maxX).toInt()
-        val startY = floor(aabb.minY).toInt()
-        val endY = ceil(aabb.maxY).toInt()
-        val startZ = floor(aabb.minZ).toInt()
-        val endZ = ceil(aabb.maxZ).toInt()
-
-        for (x in startX..endX) {
-            for (y in startY..endY) {
-                for (z in startZ..endZ) {
-                    if (ChunkLoader.isBlockSolidAt(x, y, z)) {
-                        list.add(AABB(x.toFloat(), y.toFloat(), z.toFloat(), x + 1f, y + 1f, z + 1f))
-                    }
-                }
-            }
-        }
-        return list
-    }
 }

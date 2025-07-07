@@ -20,21 +20,18 @@ object ChunkLoader {
     private val loadedChunks = ConcurrentHashMap<ChunkPos, Chunk>()
     private val chunkRenderings = ConcurrentHashMap<ChunkPos, ChunkRendering>()
 
-    private val chunkPool = ArrayDeque<Chunk>(totalChunks())
-
-
+    private val chunkPool = ArrayDeque<Chunk>(totalChunks()) // Оновлено розмір пулу
 
     private const val WORLD_SEED = 12345L
     private val random = Random(WORLD_SEED)
 
-    const val RENDER_DISTANCE_CHUNKS = 13
-    const val MAX_WORLD_HEIGHT_CHUNKS = 32
+    const val RENDER_DISTANCE_CHUNKS = 7
+
 
     final fun totalChunks(): Int {
-        val horizontalChunks = (2 * RENDER_DISTANCE_CHUNKS + 1)
-        return horizontalChunks * horizontalChunks * MAX_WORLD_HEIGHT_CHUNKS
+        val totalRangeChunks = (2 * RENDER_DISTANCE_CHUNKS + 1)
+        return totalRangeChunks * totalRangeChunks * totalRangeChunks // Тепер враховуємо Y-вісь як X та Z
     }
-
 
     fun initialize(worldGenerator: WorldGenerator, textureAtlas: TextureAtlas) {
         globalWorldGenerator = worldGenerator
@@ -62,13 +59,12 @@ object ChunkLoader {
 
     private fun obtainChunk(pos: ChunkPos): Chunk {
         val chunk = chunkPool.removeFirstOrNull()
-            ?: Chunk(Vector3f() )
+            ?: Chunk(Vector3f())
 
         chunk.pos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
         chunk.clearBlocks() // обнуляє блоки
         return chunk
     }
-
 
     fun loadChunk(chunkPos: ChunkPos, lod: Int = 1): Chunk {
         return loadedChunks.computeIfAbsent(chunkPos) {
@@ -80,37 +76,39 @@ object ChunkLoader {
                 Chunk.CHUNK_SIZE
             )
 
-            val newChunkRendering = ChunkRendering(newChunk, globalWorldGenerator, globalTextureAtlas, lod)
-            chunkRenderings[chunkPos] = newChunkRendering
+            if (!newChunk.isEmpty()) {
+                val newChunkRendering = ChunkRendering(newChunk, globalWorldGenerator, globalTextureAtlas, lod)
+                chunkRenderings[chunkPos] = newChunkRendering
+            }
+
             newChunk
         }
     }
 
-
     fun updateLoadedChunks(observerPosition: Vector3f) {
-
-        val chunkSizeWorld = Chunk.Companion.CHUNK_SIZE.toFloat() // Use actual chunk size for calculation
+        val chunkSizeWorld = Chunk.Companion.CHUNK_SIZE.toFloat()
         val observerChunkX = floorDiv(observerPosition.x.toInt(), chunkSizeWorld.toInt())
         val observerChunkY = floorDiv(observerPosition.y.toInt(), chunkSizeWorld.toInt())
         val observerChunkZ = floorDiv(observerPosition.z.toInt(), chunkSizeWorld.toInt())
-
 
         val chunksToKeep = mutableSetOf<ChunkPos>()
 
         for (xOffset in -RENDER_DISTANCE_CHUNKS..RENDER_DISTANCE_CHUNKS) {
             for (zOffset in -RENDER_DISTANCE_CHUNKS..RENDER_DISTANCE_CHUNKS) {
-                for (yChunkOffset in 0 until MAX_WORLD_HEIGHT_CHUNKS) {
+                // Змінено: тепер Y-вісь також використовує RENDER_DISTANCE_CHUNKS
+                for (yOffset in -RENDER_DISTANCE_CHUNKS..RENDER_DISTANCE_CHUNKS) {
                     val chunkX = observerChunkX + xOffset
-                    val chunkY = yChunkOffset
+                    val chunkY = observerChunkY + yOffset // Тепер завантажуємо чанки відносно observerChunkY
                     val chunkZ = observerChunkZ + zOffset
                     val chunkPos = ChunkPos(chunkX, chunkY, chunkZ)
 
-                    // Відстань у чанках
+                    // Відстань у чанках (3D відстань для більш точного LOD)
                     val dx = chunkX - observerChunkX
+                    val dy = chunkY - observerChunkY
                     val dz = chunkZ - observerChunkZ
-                    val distance2D = Math.sqrt((dx * dx + dz * dz).toDouble())
+                    val distance3D = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble())
 
-                    val lod = calculateLodForDistance(distance2D)
+                    val lod = calculateLodForDistance(distance3D) // Використовуємо 3D відстань для LOD
                     loadChunk(chunkPos, lod)
                     chunksToKeep.add(chunkPos)
                 }
@@ -135,13 +133,13 @@ object ChunkLoader {
     fun unloadChunk(chunkPos: ChunkPos) {
         val chunk = loadedChunks.remove(chunkPos)
         if (chunk != null) {
-            if (chunkPool.size < 1024) { // Пул не переповнений
+            // Збільшуємо розмір пулу, якщо необхідно, або встановлюємо розумний ліміт
+            if (chunkPool.size < totalChunks()) { // Пул не переповнений
                 chunkPool.addLast(chunk)
             }
         }
         chunkRenderings.remove(chunkPos)?.cleanup()
     }
-
 
     fun getAllChunkRenderings(): Collection<ChunkRendering> {
         return chunkRenderings.values
@@ -169,9 +167,6 @@ object ChunkLoader {
         val localY = floorMod(y, chunkSize)
         val localZ = floorMod(z, chunkSize)
 
-        // This line implies your Chunk.getBlocks() returns a 1D array
-        // and your indexing for getBlocks() is localX + localZ * chunkSize + localY * chunkSize * chunkSize
-        // Ensure this matches your Chunk.kt's index function precisely!
         return chunk.getBlocks()[localX + localZ * chunkSize + localY * chunkSize * chunkSize]
     }
 
@@ -188,12 +183,10 @@ object ChunkLoader {
         val localY = floorMod(y, chunkSize)
         val localZ = floorMod(z, chunkSize)
 
-        // Again, verify this indexing matches Chunk.kt's index function
         return chunk.getBlocks()[localX + localZ * chunkSize + localY * chunkSize * chunkSize]
     }
 
     fun getChunkContainingPosition(pos: Vector3f): Chunk? {
-        // CHANGE: Use floorDiv for robustness, matching other methods
         val chunkSize = Chunk.Companion.CHUNK_SIZE
         val chunkX = floorDiv(pos.x.toInt(), chunkSize)
         val chunkY = floorDiv(pos.y.toInt(), chunkSize)
@@ -203,7 +196,6 @@ object ChunkLoader {
     }
 
     fun getBlockAtGlobalPos(globalPos: Vector3i): Short? {
-        // CHANGE: Use floorDiv and floorMod for robustness
         val chunkSize = Chunk.Companion.CHUNK_SIZE
         val chunkX = floorDiv(globalPos.x, chunkSize)
         val chunkY = floorDiv(globalPos.y, chunkSize)
@@ -240,7 +232,8 @@ object ChunkLoader {
         val chunkZ = floorDiv(z, chunkSize)
 
         val chunkPos = ChunkPos(chunkX, chunkY, chunkZ)
-        val chunk = loadedChunks[chunkPos] ?: return
+
+        val chunk = loadedChunks[chunkPos] ?: loadChunk(chunkPos)
 
         val localX = floorMod(x, chunkSize)
         val localY = floorMod(y, chunkSize)
@@ -254,5 +247,4 @@ object ChunkLoader {
             chunk.markDirty()
         }
     }
-
 }

@@ -145,8 +145,6 @@ class ChunkRendering(
                     val blockId = blocks[x + z * chunkSize + y * chunkSize * chunkSize]
                     if (blockId == 0.toShort()) continue
 
-
-
                     val isFaceVisible = { dx: Int, dy: Int, dz: Int ->
                         val nx = x + dx
                         val ny = y + dy

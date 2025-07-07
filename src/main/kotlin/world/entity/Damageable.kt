@@ -9,4 +9,5 @@ interface Damageable {
     fun setHealth(amount: Float)
     fun setMaxHealth(amount: Float)
     fun onDeath()
+
 }
