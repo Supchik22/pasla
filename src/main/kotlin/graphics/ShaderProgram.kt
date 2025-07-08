@@ -84,6 +84,11 @@ class ShaderProgram(
         val location = uniforms[uniformName] ?: error("Uniform $uniformName not found")
         glUniform3f(location, value.x, value.y, value.z)
     }
+    fun setUniform(uniformName: String, value: FloatArray) {
+        require(value.size == 4) { "FloatArray must have 4 elements (r, g, b, a)" }
+        val location = uniforms[uniformName] ?: error("Uniform $uniformName not found")
+        glUniform4f(location, value[0], value[1], value[2], value[3])
+    }
 
 
     fun use() {

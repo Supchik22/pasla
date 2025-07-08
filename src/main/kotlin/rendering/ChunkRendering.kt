@@ -2,12 +2,13 @@ package io.github.supchik22.rendering
 
 import io.github.supchik22.world.BlockRegistry
 import io.github.supchik22.world.Chunk
-import io.github.supchik22.world.ChunkLoader.getBlockAtWorldSafe
+import io.github.supchik22.world.ChunkLoader // Assuming ChunkLoader can provide access to chunks for light calculation
 import io.github.supchik22.WorldGenerator
 import io.github.supchik22.graphics.GRASS_PLANT_TEXTURE_ID
 import io.github.supchik22.graphics.TextureAtlas
 import io.github.supchik22.graphics.getTextureIdForBlockFace
 import io.github.supchik22.util.Face
+import io.github.supchik22.world.ChunkLoader.getBlockAtWorldSafe
 import org.joml.Vector3f
 import org.lwjgl.opengl.GL11.*
 import org.lwjgl.opengl.GL15.*
@@ -18,6 +19,7 @@ import org.lwjgl.system.MemoryUtil
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.CoroutineContext
+import kotlin.math.max // Import max for light calculation
 
 // Ця константа не змінюється
 const val GRASS_PLANT_ID: Short = 4
@@ -177,7 +179,7 @@ class ChunkRendering(
                     if (blockId == GRASS_PLANT_ID) {
                         // Додаємо геометрію трави до прозорого мешу
                         val (u, v) = textureAtlas.getUvForTexture(GRASS_PLANT_TEXTURE_ID)
-                        val currentVertexOffset = transparentVertices.size / 5
+                        val currentVertexOffset = transparentVertices.size / 6 // Stride is now 6 (pos + tex + light)
 
                         val centerX = blockWorldX + 0.5f
                         val centerY = blockWorldY
@@ -185,22 +187,25 @@ class ChunkRendering(
                         val size = 0.5f
                         val height = 1.0f
 
+                        // Light value for grass (consider average light around the block center)
+                        val lightValue = getLightValue(blockWorldX.toInt(), blockWorldY.toInt(), blockWorldZ.toInt())
+
                         // Площина 1 (діагональ)
                         transparentVertices.addAll(listOf(
-                            centerX - size, centerY,          centerZ - size, u0(u), v1(v),
-                            centerX + size, centerY,          centerZ + size, u1(u), v1(v),
-                            centerX + size, centerY + height, centerZ + size, u1(u), v0(v),
-                            centerX - size, centerY + height, centerZ - size, u0(u), v0(v)
+                            centerX - size, centerY,          centerZ - size, u0(u), v1(v), lightValue,
+                            centerX + size, centerY,          centerZ + size, u1(u), v1(v), lightValue,
+                            centerX + size, centerY + height, centerZ + size, u1(u), v0(v), lightValue,
+                            centerX - size, centerY + height, centerZ - size, u0(u), v0(v), lightValue
                         ))
                         transparentIndices.addAll(faceIndices.map { it + currentVertexOffset })
 
                         // Площина 2 (перехресна)
-                        val currentVertexOffset2 = transparentVertices.size / 5
+                        val currentVertexOffset2 = transparentVertices.size / 6 // Stride is now 6
                         transparentVertices.addAll(listOf(
-                            centerX - size, centerY,          centerZ + size, u0(u), v1(v),
-                            centerX + size, centerY,          centerZ - size, u1(u), v1(v),
-                            centerX + size, centerY + height, centerZ - size, u1(u), v0(v),
-                            centerX - size, centerY + height, centerZ + size, u0(u), v0(v)
+                            centerX - size, centerY,          centerZ + size, u0(u), v1(v), lightValue,
+                            centerX + size, centerY,          centerZ - size, u1(u), v1(v), lightValue,
+                            centerX + size, centerY + height, centerZ - size, u1(u), v0(v), lightValue,
+                            centerX - size, centerY + height, centerZ + size, u0(u), v0(v), lightValue
                         ))
                         transparentIndices.addAll(faceIndices.map { it + currentVertexOffset2 })
 
@@ -209,72 +214,78 @@ class ChunkRendering(
                         // TOP face (+Y)
                         if (isFaceVisible(0, 1, 0)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.TOP))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt(), blockWorldY.toInt() + 1, blockWorldZ.toInt())
                             solidVertices.addAll(listOf(
-                                blockWorldX,      blockWorldY + 1f, blockWorldZ,      u0(u), v0(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ,      u1(u), v0(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v),
-                                blockWorldX,      blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v)
+                                blockWorldX,      blockWorldY + 1f, blockWorldZ,      u0(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ,      u1(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v), lightValue,
+                                blockWorldX,      blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
                         // BOTTOM face (-Y)
                         if (isFaceVisible(0, -1, 0)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.BOTTOM))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt(), blockWorldY.toInt() - 1, blockWorldZ.toInt())
                             solidVertices.addAll(listOf(
-                                blockWorldX,      blockWorldY, blockWorldZ + 1f, u0(u), v1(v),
-                                blockWorldX + 1f, blockWorldY, blockWorldZ + 1f, u1(u), v1(v),
-                                blockWorldX + 1f, blockWorldY, blockWorldZ,      u1(u), v0(v),
-                                blockWorldX,      blockWorldY, blockWorldZ,      u0(u), v0(v)
+                                blockWorldX,      blockWorldY, blockWorldZ + 1f, u0(u), v1(v), lightValue,
+                                blockWorldX + 1f, blockWorldY, blockWorldZ + 1f, u1(u), v1(v), lightValue,
+                                blockWorldX + 1f, blockWorldY, blockWorldZ,      u1(u), v0(v), lightValue,
+                                blockWorldX,      blockWorldY, blockWorldZ,      u0(u), v0(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
                         // NORTH face (-Z)
                         if (isFaceVisible(0, 0, -1)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.NORTH))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt(), blockWorldY.toInt(), blockWorldZ.toInt() - 1)
                             solidVertices.addAll(listOf(
-                                blockWorldX,      blockWorldY,      blockWorldZ, u0(u), v0(v),
-                                blockWorldX + 1f, blockWorldY,      blockWorldZ, u1(u), v0(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ, u1(u), v1(v),
-                                blockWorldX,      blockWorldY + 1f, blockWorldZ, u0(u), v1(v)
+                                blockWorldX,      blockWorldY,      blockWorldZ, u0(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY,      blockWorldZ, u1(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ, u1(u), v1(v), lightValue,
+                                blockWorldX,      blockWorldY + 1f, blockWorldZ, u0(u), v1(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
                         // SOUTH face (+Z)
                         if (isFaceVisible(0, 0, 1)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.SOUTH))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt(), blockWorldY.toInt(), blockWorldZ.toInt() + 1)
                             solidVertices.addAll(listOf(
-                                blockWorldX + 1f, blockWorldY,      blockWorldZ + 1f, u0(u), v0(v),
-                                blockWorldX,      blockWorldY,      blockWorldZ + 1f, u1(u), v0(v),
-                                blockWorldX,      blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v)
+                                blockWorldX + 1f, blockWorldY,      blockWorldZ + 1f, u0(u), v0(v), lightValue,
+                                blockWorldX,      blockWorldY,      blockWorldZ + 1f, u1(u), v0(v), lightValue,
+                                blockWorldX,      blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
                         // WEST face (-X)
                         if (isFaceVisible(-1, 0, 0)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.WEST))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt() - 1, blockWorldY.toInt(), blockWorldZ.toInt())
                             solidVertices.addAll(listOf(
-                                blockWorldX, blockWorldY,      blockWorldZ + 1f, u0(u), v0(v),
-                                blockWorldX, blockWorldY,      blockWorldZ,      u1(u), v0(v),
-                                blockWorldX, blockWorldY + 1f, blockWorldZ,      u1(u), v1(v),
-                                blockWorldX, blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v)
+                                blockWorldX, blockWorldY,      blockWorldZ + 1f, u0(u), v0(v), lightValue,
+                                blockWorldX, blockWorldY,      blockWorldZ,      u1(u), v0(v), lightValue,
+                                blockWorldX, blockWorldY + 1f, blockWorldZ,      u1(u), v1(v), lightValue,
+                                blockWorldX, blockWorldY + 1f, blockWorldZ + 1f, u0(u), v1(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
                         // EAST face (+X)
                         if (isFaceVisible(1, 0, 0)) {
                             val (u, v) = textureAtlas.getUvForTexture(getTextureIdForBlockFace(blockId, Face.EAST))
-                            val currentVertexOffset = solidVertices.size / 5
+                            val currentVertexOffset = solidVertices.size / 6 // Stride is now 6
+                            val lightValue = getLightValue(blockWorldX.toInt() + 1, blockWorldY.toInt(), blockWorldZ.toInt())
                             solidVertices.addAll(listOf(
-                                blockWorldX + 1f, blockWorldY,      blockWorldZ,      u0(u), v0(v),
-                                blockWorldX + 1f, blockWorldY,      blockWorldZ + 1f, u1(u), v0(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v),
-                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ,      u0(u), v1(v)
+                                blockWorldX + 1f, blockWorldY,      blockWorldZ,      u0(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY,      blockWorldZ + 1f, u1(u), v0(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ + 1f, u1(u), v1(v), lightValue,
+                                blockWorldX + 1f, blockWorldY + 1f, blockWorldZ,      u0(u), v1(v), lightValue
                             ))
                             solidIndices.addAll(faceIndices.map { it + currentVertexOffset })
                         }
@@ -347,13 +358,16 @@ class ChunkRendering(
         MemoryUtil.memFree(indicesBuffer) // Звільняємо пам'ять ByteBuffer
 
         // Vertex Attributes (Пояснення, як інтерпретувати дані у VBO)
-        val stride = 5 * Float.SIZE_BYTES // 3D позиція (3 floats) + 2D текстурні координати (2 floats) = 5 floats
+        val stride = 6 * Float.SIZE_BYTES // 3D позиція (3 floats) + 2D текстурні координати (2 floats) + 1D світло (1 float) = 6 floats
         // Position attribute (layout location = 0)
         glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0)
         glEnableVertexAttribArray(0)
         // Texture coordinate attribute (layout location = 1)
         glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, (3 * Float.SIZE_BYTES).toLong())
         glEnableVertexAttribArray(1)
+        // Light attribute (layout location = 2) - NEW!
+        glVertexAttribPointer(2, 1, GL_FLOAT, false, stride, (5 * Float.SIZE_BYTES).toLong()) // Offset is after 3 pos + 2 tex
+        glEnableVertexAttribArray(2)
 
         glBindVertexArray(0) // Відв'язуємо VAO
 
@@ -397,6 +411,7 @@ class ChunkRendering(
             glCullFace(GL_FRONT)
             glBindVertexArray(solidVaoId)
             glDrawElements(GL_TRIANGLES, solidVertexCount, GL_UNSIGNED_INT, 0)
+            glCullFace(GL_BACK)
         }
 
         // 2. Рендеримо прозорі об'єкти
@@ -409,10 +424,40 @@ class ChunkRendering(
             glDrawElements(GL_TRIANGLES, transparentVertexCount, GL_UNSIGNED_INT, 0)
 
             glDisable(GL_BLEND)
-            glEnable(GL_CULL_FACE)
+            glEnable(GL_CULL_FACE) // Re-enable culling after transparent objects
         }
 
         glBindVertexArray(0)
+    }
+
+    /**
+     * Retrieves the combined light level (sky light and block light) for a given world coordinate.
+     * This needs to safely query the ChunkLoader for the block's light.
+     */
+    private fun getLightValue(worldX: Int, worldY: Int, worldZ: Int): Float {
+        val chunkX = Math.floorDiv(worldX, Chunk.CHUNK_SIZE)
+        val chunkY = Math.floorDiv(worldY, Chunk.CHUNK_SIZE)
+        val chunkZ = Math.floorDiv(worldZ, Chunk.CHUNK_SIZE)
+
+        val localX = Math.floorMod(worldX, Chunk.CHUNK_SIZE)
+        val localY = Math.floorMod(worldY, Chunk.CHUNK_SIZE)
+        val localZ = Math.floorMod(worldZ, Chunk.CHUNK_SIZE)
+
+        // Ensure you have a getChunkAt method in ChunkLoader
+        val targetChunk = ChunkLoader.getChunkAt(Vector3f(chunkX.toFloat(), chunkY.toFloat(), chunkZ.toFloat()))
+
+        return if (targetChunk != null && targetChunk.isInBounds(localX, localY, localZ)) {
+            val blockLight = targetChunk.getBlockLight(localX, localY, localZ)
+            val skyLight = targetChunk.getSkyLight(localX, localY, localZ)
+
+            // Combine block light and sky light. Max of the two, or a more complex blending.
+            // Normalize to a float between 0.0 and 1.0 (assuming light values are 0-15)
+            // Added an ambient minimum light to prevent full blackness in shadows
+            (max(blockLight, skyLight) / 15.0f) * 0.7f + 0.3f
+        } else {
+            // If chunk is not loaded or out of bounds, return a default ambient light
+            0.5f // Default ambient light for unloaded areas
+        }
     }
 
 

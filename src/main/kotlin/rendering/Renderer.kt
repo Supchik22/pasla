@@ -4,9 +4,13 @@ import io.github.supchik22.Camera
 import io.github.supchik22.world.ChunkLoader
 import io.github.supchik22.graphics.ShaderProgram
 import io.github.supchik22.graphics.TextureAtlas
+import io.github.supchik22.rendering.ParticleSystem
 import org.joml.Matrix4f
 import org.joml.Math
+import org.lwjgl.glfw.GLFW.GLFW_DECORATED
+import org.lwjgl.glfw.GLFW.GLFW_FALSE
 import org.lwjgl.glfw.GLFW.glfwSwapInterval
+import org.lwjgl.glfw.GLFW.glfwWindowHint
 import org.lwjgl.opengl.GL
 import org.lwjgl.opengl.GL11.*
 import java.awt.Color
@@ -18,6 +22,8 @@ import java.awt.Color
 class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
     lateinit var shaderProgram: ShaderProgram
     lateinit var textureAtlas: TextureAtlas
+
+
     // If you have Skybox, you might manage it here too
     // private lateinit var skybox: Skybox
 
@@ -30,7 +36,11 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         glEnable(GL_CULL_FACE) // Enable face culling for optimization
         glCullFace(GL_BACK) // Cull back faces
 
+        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE)
 
+
+
+        ParticleSystem.init()
         glfwSwapInterval(0)
 
         val bgColor = Color.decode("#bbe1fa") // A pleasant sky blue background color
@@ -69,7 +79,9 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
         this.windowHeight = height
         glViewport(0, 0, width, height)
     }
-
+    fun updateParticles(deltaTime: Float) {
+        ParticleSystem.update(deltaTime)
+    }
     /**
      * Renders the entire game scene from the perspective of the camera.
      * @param camera The camera object used for view transformation.
@@ -101,10 +113,11 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
             shaderProgram.setUniform("model", modelMatrix) // Pass the model matrix to the shader
             chunkRendering.render() // Render the chunk
         }
+
         textureAtlas.unbind() // Unbind the texture atlas
 
         shaderProgram.detach() // Deactivate the shader program
-
+        ParticleSystem.render(camera.getViewMatrix(), projectionMatrix)
 
     }
 

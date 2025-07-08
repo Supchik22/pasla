@@ -90,6 +90,31 @@ class Chunk(val pos: Vector3f) {
 
         return blocks.all { it == 0.toShort() }
     }
+    private val light: ByteArray = ByteArray(CHUNK_VOLUME)
+
+    fun getBlockLight(x: Int, y: Int, z: Int): Int {
+        return light[index(x, y, z)].toInt() and 0x0F
+    }
+
+    fun getSkyLight(x: Int, y: Int, z: Int): Int {
+        return (light[index(x, y, z)].toInt() ushr 4) and 0x0F
+    }
+
+    fun setBlockLight(x: Int, y: Int, z: Int, value: Int) {
+        val idx = index(x, y, z)
+        val sky = light[idx].toInt() and 0xF0
+        light[idx] = (sky or (value.coerceIn(0, 15))).toByte()
+    }
+
+    fun setSkyLight(x: Int, y: Int, z: Int, value: Int) {
+        val idx = index(x, y, z)
+        val block = light[idx].toInt() and 0x0F
+        light[idx] = ((value.coerceIn(0, 15) shl 4) or block).toByte()
+    }
+
+    fun getChunkPos(): Vector3f {
+        return pos
+    }
 
 
 }

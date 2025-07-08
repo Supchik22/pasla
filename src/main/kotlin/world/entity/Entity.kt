@@ -7,7 +7,7 @@ open class Entity(
     private var maxHealth: Float = 100f
 ) : Damageable, Renderable {
 
-    private var health: Float = maxHealth
+    private var health: Float = 50f
     private var alive: Boolean = true
 
     override fun takeDamage(amount: Float) {

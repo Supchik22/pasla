@@ -1,50 +1,72 @@
 package io.github.supchik22.graphics
 
+import io.github.supchik22.rendering.Renderable
 import io.github.supchik22.util.Window
 import io.github.supchik22.world.entity.Player
-import org.lwjgl.opengl.GL11.*
+import io.github.supchik22.graphics.ShaderProgram
+import org.joml.Matrix4f
+import org.lwjgl.opengl.GL30.*
+import org.lwjgl.system.MemoryUtil
 
-fun beginHUDRendering(windowWidth: Int, windowHeight: Int) {
-    glMatrixMode(GL_PROJECTION)
-    glPushMatrix()
-    glLoadIdentity()
-    glOrtho(0.0, windowWidth.toDouble(), windowHeight.toDouble(), 0.0, -1.0, 1.0)
+object HUD : Renderable {
+    private lateinit var shader: ShaderProgram
+    private var vao = 0
+    private var vbo = 0
+    private val projection = Matrix4f()
 
-    glMatrixMode(GL_MODELVIEW)
-    glPushMatrix()
-    glLoadIdentity()
+    fun init(window: Window) {
+        shader = ShaderProgram("shaders/hud_vertex.glsl", "shaders/hud_fragment.glsl",listOf("projection","color"))
+        vao = glGenVertexArrays()
+        vbo = glGenBuffers()
+    }
 
-    glDisable(GL_DEPTH_TEST)
-}
-fun drawRect(x: Float, y: Float, width: Float, height: Float, r: Float, g: Float, b: Float, a: Float) {
-    glColor4f(r, g, b, a)
-    glBegin(GL_QUADS)
-    glVertex2f(x, y)
-    glVertex2f(x + width, y)
-    glVertex2f(x + width, y + height)
-    glVertex2f(x, y + height)
-    glEnd()
-}
-fun renderHUD(window: Window, player: Player) {
-    val width = window.width
-    val height = window.height
+    fun render(window: Window, player: Player) {
+        projection.identity().ortho(0f, window.width.toFloat(), window.height.toFloat(), 0f, -1f, 1f)
 
-    beginHUDRendering(width, height)
+        val healthPercent = player.getHealth() / player.getMaxHealth()
+        val barX = 20f
+        val barY = 20f
+        val barWidth = 200f
+        val barHeight = 20f
 
-    val healthPercent = player.getHealth() / player.getMaxHealth()
+        // Рендеримо фон
+        renderBar(barX, barY, barWidth, barHeight, floatArrayOf(0.2f, 0.2f, 0.2f, 1f))
+        // Рендеримо здоров'я
+        renderBar(barX, barY, barWidth * healthPercent, barHeight, floatArrayOf(1f, 0f, 0f, 1f))
+    }
 
-    drawRect(20f, 20f, 200f, 20f, 0.2f, 0.2f, 0.2f, 1f) // фон
-    drawRect(20f, 20f, 200f * healthPercent, 20f, 1f, 0f, 0f, 1f) // hp
+    private fun renderBar(x: Float, y: Float, width: Float, height: Float, color: FloatArray) {
+        val vertices = floatArrayOf(
+            x, y,
+            x + width, y,
+            x + width, y + height,
+            x, y + height
+        )
 
-    endHUDRendering()
-}
+        val buffer = MemoryUtil.memAllocFloat(vertices.size).put(vertices).flip()
 
-fun endHUDRendering() {
-    glEnable(GL_DEPTH_TEST)
+        glBindVertexArray(vao)
+        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        glBufferData(GL_ARRAY_BUFFER, buffer, GL_DYNAMIC_DRAW)
 
-    glMatrixMode(GL_PROJECTION)
-    glPopMatrix()
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(0, 2, GL_FLOAT, false, 2 * Float.SIZE_BYTES, 0)
 
-    glMatrixMode(GL_MODELVIEW)
-    glPopMatrix()
+        shader.use()
+        shader.setUniform("projection", projection)
+        shader.setUniform("color", color)
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4)
+
+        glDisableVertexAttribArray(0)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        glBindVertexArray(0)
+        MemoryUtil.memFree(buffer)
+    }
+
+    fun cleanup() {
+        glDeleteBuffers(vbo)
+        glDeleteVertexArrays(vao)
+        shader.cleanup()
+    }
 }

@@ -3,6 +3,8 @@ package io.github.supchik22.world.entity
 import io.github.supchik22.Camera
 import io.github.supchik22.InputHandler
 import io.github.supchik22.phyc.AABB
+import io.github.supchik22.rendering.ParticleSystem
+import io.github.supchik22.util.GameTime
 import io.github.supchik22.util.Ray
 import io.github.supchik22.world.BlockRegistry
 import io.github.supchik22.world.ChunkLoader
@@ -11,6 +13,7 @@ import org.lwjgl.glfw.GLFW.*
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
 class Player : PhysicalEntity() {
 
@@ -108,6 +111,13 @@ class Player : PhysicalEntity() {
 
         return limitedVel
     }
+    override fun render() {
+        val target = Vector3f(pos.x, camera.position.y, pos.z)
+        val lerpSpeed = 10f  // Чим більше — тим швидше камера "наздожене" гравця
+
+        camera.position.lerp(target, (GameTime.getDeltaTime() * lerpSpeed).toFloat())
+
+    }
 
     override fun updatePhysics(deltaTime: Float) {
         if ((loaded) && !last_frame_loaded ) {
@@ -116,6 +126,20 @@ class Player : PhysicalEntity() {
         last_frame_loaded = loaded
         if (!loaded) return
         super.updatePhysics(deltaTime)
+
+        if (onGround && velocity.length() > 5f) {
+
+            val random = Random.Default
+            if (random.nextBoolean()) {
+                val vx = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
+                val vy = random.nextFloat() * 0.5f + 0.2f   // Від 0.2 до 0.7 (вгору)
+                val vz = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
+
+
+                ParticleSystem.spawn(pos, Vector3f(vx,0.3f,vz),1f, Vector3f(0f,1f,0f),24f)
+            }
+
+        }
 
         val walkSpeed = 3.0f
         val sprintSpeed = 6.0f
@@ -196,15 +220,16 @@ class Player : PhysicalEntity() {
         if (onGround && input.lengthSquared() > 0f) {
             val bobbingAmount = 0.02f
             val bobbingSpeed = 10f
-            val offsetY = Math.sin(System.currentTimeMillis() / 100.0 * bobbingSpeed) * bobbingAmount
+            val offsetY = sin(System.currentTimeMillis() / 100.0 * bobbingSpeed) * bobbingAmount
             camera.position.y = pos.y + cameraHeightOffset + offsetY.toFloat()
         } else {
             camera.position.y = pos.y + cameraHeightOffset
         }
 
+
         handleBlockInteraction()
 
-        camera.position.set(pos.x, camera.position.y, pos.z)
+
     }
 
     private fun handleBlockInteraction() {
@@ -217,7 +242,7 @@ class Player : PhysicalEntity() {
                     it.adjacentAir.pos.y.toInt(),
                     it.adjacentAir.pos.z.toInt()
                 )
-                ChunkLoader.setBlock(bx, by, bz, BlockRegistry.STONE.id)
+                ChunkLoader.setBlock(bx, by, bz, BlockRegistry.TORCH.id)
                 if (getAABB().intersects(AABB(bx.toFloat(), by.toFloat(), bz.toFloat(), bx + 1f, by + 1f, bz + 1f))) {
                     pos.y = by + 1f
                     velocity.y = 0f

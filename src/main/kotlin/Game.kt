@@ -1,6 +1,7 @@
 package io.github.supchik22
 
-import io.github.supchik22.graphics.renderHUD
+import io.github.supchik22.graphics.HUD
+
 import io.github.supchik22.rendering.OpenGLCommandQueue
 import io.github.supchik22.rendering.Renderer
 import io.github.supchik22.util.ChunkPos
@@ -22,6 +23,7 @@ class Game {
     private lateinit var renderer: Renderer
     private lateinit var camera: Camera
     private lateinit var worldGenerator: WorldGenerator
+    private lateinit var hud: HUD
 
     private lateinit var imGuiLayer: ImGuiLayer
 
@@ -54,6 +56,7 @@ class Game {
 
         InputHandler.initialize(window.windowHandle)
 
+        HUD.init(window)
         // Initialize game time tracking
         GameTime.init()
 
@@ -108,7 +111,7 @@ class Game {
     private fun update(deltaTime: Float) {
 
         player.updatePhysics(deltaTime)
-
+        renderer.updateParticles(deltaTime)
         camera.position.set(player.pos)
         camera.position.add(0f,player.height,0f)
 
@@ -130,6 +133,7 @@ class Game {
         if (currentChunkPos != lastCameraChunkPos) {
             println("DEBUG Game: Player moved to new chunk: $currentChunkPos. Updating loaded chunks.")
             ChunkLoader.updateLoadedChunks(player.pos) // Use player.pos for chunk loading
+            //ChunkLoader.applySkyLightToAllTopChunks()
             lastCameraChunkPos = currentChunkPos
         }
 
@@ -148,7 +152,10 @@ class Game {
      * Triggers the rendering of the game scene.
      */
     private fun render() {
+
         renderer.render(camera)
+
+        HUD.render(window,player)
 
         imGuiLayer.render()
     }
