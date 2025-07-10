@@ -8,6 +8,7 @@ import io.github.supchik22.graphics.GRASS_PLANT_TEXTURE_ID
 import io.github.supchik22.graphics.TextureAtlas
 import io.github.supchik22.graphics.getTextureIdForBlockFace
 import io.github.supchik22.util.Face
+import io.github.supchik22.util.FrustumCuller
 import io.github.supchik22.world.ChunkLoader.getBlockAtWorldSafe
 import org.joml.Vector3f
 import org.lwjgl.opengl.GL11.*
@@ -69,6 +70,17 @@ class ChunkRendering(
     // Скоуп для корутин, які виконуватимуть обчислювальні операції з генерації мешу
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var meshGenerationJob: Job? = null
+
+    val chunkSize = Chunk.CHUNK_SIZE.toFloat()
+    val chunkMin = Vector3f(
+        chunk.pos.x * chunkSize,
+        chunk.pos.y * chunkSize,
+        chunk.pos.z * chunkSize
+    )
+    val chunkMax = Vector3f(chunkMin).add(chunkSize, chunkSize, chunkSize)
+
+
+
 
     init {
         // Генеруємо ID для обох наборів буферів. Це безпечно робити тут, але завантаження даних
@@ -399,7 +411,11 @@ class ChunkRendering(
      * Ця функція повинна викликатися в головному потоці рендерингу.
      */
     fun render() {
-        // Якщо чанк відмічено як "брудний" — оновлюємо його меш
+
+
+        if (!FrustumCuller.isChunkVisible(chunkMin, chunkMax)) {
+            return
+        }
         if (chunk.isDirty) {
             chunk.isDirty = false
             startMeshGeneration()
@@ -453,10 +469,13 @@ class ChunkRendering(
             // Combine block light and sky light. Max of the two, or a more complex blending.
             // Normalize to a float between 0.0 and 1.0 (assuming light values are 0-15)
             // Added an ambient minimum light to prevent full blackness in shadows
+
             (max(blockLight, skyLight) / 15.0f) * 0.7f + 0.3f
+            1.0f
         } else {
             // If chunk is not loaded or out of bounds, return a default ambient light
-            0.5f // Default ambient light for unloaded areas
+            //0.5f // Default ambient light for unloaded areas
+            0.5f
         }
     }
 

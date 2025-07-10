@@ -45,7 +45,7 @@ class Camera {
     }
 
     // Add getter functions for front and right vectors, as used by Player
-    fun getFront(out: Vector3f) {
+    fun getFront(out: Vector3f)  {
         out.set(front)
     }
 

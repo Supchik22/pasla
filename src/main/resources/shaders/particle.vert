@@ -8,9 +8,17 @@ out vec3 particleColor;
 
 uniform mat4 projection;
 uniform mat4 view;
+uniform vec3 cameraPos;
 
 void main() {
-    gl_Position = projection * view * vec4(aPos, 1.0);
-    gl_PointSize = aSize;
+    vec4 worldPos = vec4(aPos, 1.0);
+    gl_Position = projection * view * worldPos;
+
+    float dist = length(cameraPos - aPos);
+
+    float size = aSize / dist;
+
+    gl_PointSize = clamp(size, 1.0, 100.0); // межі для стабільності
+
     particleColor = aColor;
 }

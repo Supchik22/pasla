@@ -31,10 +31,10 @@ object BlockRegistry {
     }
 
     val AIR = register(Color.WHITE, solid = false)
-    val GRASS = register(Color(55,195,44))
+    val GRASS = register(Color.decode("#7aae5d"))
     val DIRT = register(Color.decode("#70553f"))
     val STONE = register(Color.decode("#999999"))
-    val GRASS_PLANT = register(Color(80, 200, 60), solid = false)
+    val GRASS_PLANT = register(Color.decode("#7aae5d"), solid = false)
 
     val MAPLE_LOG = register(Color(80, 200, 60), solid = true)
     val MAPLE_LEAVES = register(Color(80, 200, 60), solid = true)

@@ -1,9 +1,11 @@
 package io.github.supchik22
 
 
+val game = Game()
+
 
 fun main() {
-    val game = Game()
+
     try {
         game.init()
         game.run()

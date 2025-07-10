@@ -1,10 +1,12 @@
 package io.github.supchik22.rendering
 
 import io.github.supchik22.Camera
+import io.github.supchik22.graphics.HUD
 import io.github.supchik22.world.ChunkLoader
 import io.github.supchik22.graphics.ShaderProgram
 import io.github.supchik22.graphics.TextureAtlas
 import io.github.supchik22.rendering.ParticleSystem
+import io.github.supchik22.util.FrustumCuller
 import org.joml.Matrix4f
 import org.joml.Math
 import org.lwjgl.glfw.GLFW.GLFW_DECORATED
@@ -98,6 +100,7 @@ class Renderer(private var windowWidth: Int, private var windowHeight: Int) {
             )
         val viewMatrix = camera.getViewMatrix() // Get the camera's view matrix
 
+        FrustumCuller.updateFromMatrix(viewMatrix, projectionMatrix)
         // Skybox.render(projectionMatrix, viewMatrix) // Uncomment if you have a Skybox to render
 
         shaderProgram.use() // Activate the shader program

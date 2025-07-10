@@ -9,7 +9,9 @@ import io.github.supchik22.util.Ray
 import io.github.supchik22.world.BlockRegistry
 import io.github.supchik22.world.ChunkLoader
 import org.joml.Vector3f
+import org.joml.Vector3i
 import org.lwjgl.glfw.GLFW.*
+
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.sin
@@ -112,12 +114,24 @@ class Player : PhysicalEntity() {
         return limitedVel
     }
     override fun render() {
-        val target = Vector3f(pos.x, camera.position.y, pos.z)
-        val lerpSpeed = 10f  // Чим більше — тим швидше камера "наздожене" гравця
 
-        camera.position.lerp(target, (GameTime.getDeltaTime() * lerpSpeed).toFloat())
+        val baseCamPos = Vector3f(pos.x, pos.y + cameraHeightOffset, pos.z)
 
+        // Додаємо bobbing, якщо гравець рухається по землі
+        if (onGround && velocity.lengthSquared() > 0.01f) {
+            val bobbingAmount = 0.02f
+            val bobbingSpeed = 10f
+            val time = System.currentTimeMillis() / 100.0
+            val offsetY = sin(time * bobbingSpeed) * bobbingAmount
+            baseCamPos.y += offsetY.toFloat()
+        }
+
+        // Плавно наближаємось до нової позиції камери
+        val lerpSpeed = 10f
+        val deltaTime = GameTime.getDeltaTime()
+        camera.position.lerp(baseCamPos, (lerpSpeed * deltaTime).toFloat())
     }
+
 
     override fun updatePhysics(deltaTime: Float) {
         if ((loaded) && !last_frame_loaded ) {
@@ -129,16 +143,19 @@ class Player : PhysicalEntity() {
 
         if (onGround && velocity.length() > 5f) {
 
-            val random = Random.Default
-            if (random.nextBoolean()) {
-                val vx = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
-                val vy = random.nextFloat() * 0.5f + 0.2f   // Від 0.2 до 0.7 (вгору)
-                val vz = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
+            val blockUnderEntity = ChunkLoader.getBlockAtWorldSafe(getBlockUnderCenter())
+            if (blockUnderEntity != null) {
+                val blockUnderEntityInRegistry = BlockRegistry.getEntry(blockUnderEntity)
+                if (blockUnderEntityInRegistry != null) {
+                    val random = Random.Default
+                    if (random.nextBoolean()) {
+                        val vx = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
+                        val vy = random.nextFloat() * 0.5f + 0.2f   // Від 0.2 до 0.7 (вгору)
+                        val vz = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
 
 
-                ParticleSystem.spawn(pos, Vector3f(vx,0.3f,vz),1f, Vector3f(0f,1f,0f),24f)
-            }
-
+                        ParticleSystem.spawnBlockParticle(pos, Vector3f(vx,0.3f,vz),1f, blockUnderEntityInRegistry.id ,24f)
+                    } } }
         }
 
         val walkSpeed = 3.0f
@@ -217,14 +234,6 @@ class Player : PhysicalEntity() {
             velocity.y = jumpStrength
         }
 
-        if (onGround && input.lengthSquared() > 0f) {
-            val bobbingAmount = 0.02f
-            val bobbingSpeed = 10f
-            val offsetY = sin(System.currentTimeMillis() / 100.0 * bobbingSpeed) * bobbingAmount
-            camera.position.y = pos.y + cameraHeightOffset + offsetY.toFloat()
-        } else {
-            camera.position.y = pos.y + cameraHeightOffset
-        }
 
 
         handleBlockInteraction()
@@ -243,6 +252,7 @@ class Player : PhysicalEntity() {
                     it.adjacentAir.pos.z.toInt()
                 )
                 ChunkLoader.setBlock(bx, by, bz, BlockRegistry.TORCH.id)
+
                 if (getAABB().intersects(AABB(bx.toFloat(), by.toFloat(), bz.toFloat(), bx + 1f, by + 1f, bz + 1f))) {
                     pos.y = by + 1f
                     velocity.y = 0f
@@ -258,7 +268,31 @@ class Player : PhysicalEntity() {
                     it.hitBlock.pos.y.toInt(),
                     it.hitBlock.pos.z.toInt()
                 )
+                val random = Random.Default
+                repeat(30) {
+
+                    val offsetX = random.nextFloat()
+                    val offsetY = random.nextFloat()
+                    val offsetZ = random.nextFloat()
+
+                    val vx = random.nextFloat() * 0.6f - 0.3f   // Від -0.3 до 0.3
+                    val vy = random.nextFloat() * 0.4f - 0.2f   // Від -0.2 до 0.2
+                    val vz = random.nextFloat() * 0.6f - 0.3f   // Від -0.3 до 0.3
+
+                    val position = Vector3f(bx + offsetX, by + offsetY, bz + offsetZ)
+                    val velocity = Vector3f(vx, vy, vz)
+
+                    ParticleSystem.spawnBlockParticle(
+                        position,
+                        velocity,
+                        random.nextFloat()+0.1f ,
+                        ChunkLoader.getBlockAtWorld(bx, by, bz),
+                        80f
+                    )
+                }
+
                 ChunkLoader.setBlock(bx, by, bz, 0)
+
             }
         }
     }

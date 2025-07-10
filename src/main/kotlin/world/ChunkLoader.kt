@@ -9,6 +9,7 @@ import org.joml.Vector3i
 import java.lang.Math.floorDiv
 import java.lang.Math.floorMod
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 lateinit var globalWorldGenerator: WorldGenerator
@@ -23,7 +24,7 @@ object ChunkLoader {
     private const val WORLD_SEED = 12345L
     private val random = Random(WORLD_SEED)
 
-    const val RENDER_DISTANCE_CHUNKS = 7
+    const val RENDER_DISTANCE_CHUNKS = 10
 
     fun totalChunks(): Int {
         val totalRangeChunks = (2 * RENDER_DISTANCE_CHUNKS + 1)
@@ -97,7 +98,7 @@ object ChunkLoader {
                     val dx = chunkX - observerChunkX
                     val dy = chunkY - observerChunkY
                     val dz = chunkZ - observerChunkZ
-                    val distance3D = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble())
+                    val distance3D = sqrt((dx * dx + dy * dy + dz * dz).toDouble())
 
                     val lod = calculateLodForDistance(distance3D)
                     loadChunk(chunkPos, lod)
@@ -148,7 +149,9 @@ object ChunkLoader {
         val localZ = floorMod(z, chunkSize)
         return chunk.getBlock(localX, localY, localZ)
     }
-
+    fun getBlockAtWorldSafe(v: Vector3i): Short? {
+        return getBlockAtWorldSafe(v.x,v.y,v.z)
+    }
     fun getBlockAtWorldSafe(x: Int, y: Int, z: Int): Short? {
         val chunkSize = Chunk.CHUNK_SIZE
         val chunkX = floorDiv(x, chunkSize)
@@ -163,15 +166,6 @@ object ChunkLoader {
         return if (chunk.isInBounds(localX, localY, localZ)) chunk.getBlock(localX, localY, localZ) else null
     }
 
-    fun getBlockLightAtWorld(x: Int, y: Int, z: Int): Int {
-        // Повертаємо 0, оскільки освітлення видалено
-        return 0
-    }
-
-    fun getSkyLightAtWorld(x: Int, y: Int, z: Int): Int {
-        // Повертаємо максимальне значення, щоб все було яскраво освітлено
-        return 15
-    }
 
     fun getChunkContainingPosition(pos: Vector3f): Chunk? {
         val chunkSize = Chunk.CHUNK_SIZE

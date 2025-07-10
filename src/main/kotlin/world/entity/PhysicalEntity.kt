@@ -3,6 +3,7 @@ package io.github.supchik22.world.entity
 import io.github.supchik22.phyc.AABB
 import io.github.supchik22.world.ChunkLoader
 import org.joml.Vector3f
+import org.joml.Vector3i
 import kotlin.math.*
 
 open class PhysicalEntity : Entity() {
@@ -60,6 +61,26 @@ open class PhysicalEntity : Entity() {
         limitedVel.z += (targetVel.z - limitedVel.z) * airAcceleration * deltaTime / mass
 
         return Vector3f(limitedVel.x, currentVel.y, limitedVel.z)
+    }
+    /**
+     * Повертає координати блоку безпосередньо під центром ентіті.
+     * Добре підходить для простих перевірок, але може бути неточним,
+     * якщо ентіті стоїть на межі кількох блоків.
+     */
+
+    fun getBlockUnderCenter(): Vector3i {
+        val x = floor(pos.x).toInt()
+        val y = floor(pos.y - 0.01f).toInt()
+        val z = floor(pos.z).toInt()
+        return Vector3i(x, y, z)
+    }
+
+    fun getBlockUnderFeet(): Vector3i {
+        return Vector3i(
+            floor(pos.x).toInt(),
+            floor(pos.y - 0.01f).toInt(),
+            floor(pos.z).toInt()
+        )
     }
 
     open fun updatePhysics(deltaTime: Float) {

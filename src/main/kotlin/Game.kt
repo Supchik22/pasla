@@ -34,7 +34,9 @@ class Game {
     private val FIXED_TIMESTEP = 1f / 60f  // 60 фізичних кадрів на секунду
     private var physicsAccumulator = 0f
 
-
+    fun getCamera (): Camera {
+        return camera
+    }
     fun init() {
         // Initialize the game window
         window = Window(2000, 1000, "Voxel World")
@@ -112,6 +114,8 @@ class Game {
 
         player.updatePhysics(deltaTime)
         renderer.updateParticles(deltaTime)
+
+
         camera.position.set(player.pos)
         camera.position.add(0f,player.height,0f)
 
